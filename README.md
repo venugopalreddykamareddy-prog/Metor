@@ -1,49 +1,57 @@
-# RealTime AI Assistant
+# Metor
 
-> Repository: `Metor` · Status: **Phase 1 — web foundation (React + Vite + Fastify WebSocket echo); no audio or AI yet**
+Metor is a personal project: a browser app that will transcribe speech, spot questions, and stream suggested answers based on my own verified resume and project notes. I'm building it mainly for SRE, DevOps, and networking interview practice.
 
-A lightweight, browser-first assistant that transcribes speech in real time, detects questions, and streams context-aware answers grounded in the user's own verified resume, projects, and STAR stories.
+## Status
 
-**Primary use cases**
-
-- Mock interview and technical practice (SRE, DevOps, Platform, Cloud, Network, Network Security).
-- Coding and system design practice.
-- Professional meeting assistance (notes, summaries, follow-up questions).
-- Live interview assistance **only where AI use is expressly permitted** by the interviewer/organization.
-
-**What this app will not do:** covert recording, hiding itself from screen sharing, or fabricating experience. See [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md).
-
-## Documentation
-
-| Document | Purpose |
+| Phase | State |
 |---|---|
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Codespace setup, start/stop commands, tests, troubleshooting |
-| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Functional and non-functional requirements, technical coverage |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, audio pipeline, AI engine, API, performance, cost, storage |
-| [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) | Consent, data handling, threat model, prompt-injection defenses |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phases 0–9, acceptance criteria, testing strategy |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture Decision Records (ADRs) |
-| [AGENTS.md](AGENTS.md) | Rules for AI coding agents (Copilot, Claude Code) |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| 0. Docs and agent rules | Done (PR #1) |
+| 1. Web foundation | Done (PR #2) |
+| 2. Mic capture, login, simulated transcription | Next |
+| 3–9. Real transcription, answers, resume grounding, practice mode, desktop app, hardening, release | Planned, see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) |
 
-## Planned stack (MVP)
+### What works today (Phase 1)
 
-- **Client:** React + TypeScript + Vite, IndexedDB for local data
-- **Server:** Node.js 24 + Fastify + WebSocket
-- **AI (free-first, $0/month target):** simulated transcription and answers by default; Groq free tier for transcription and answers; browser Web Speech API evaluated for transcription; Gemini free tier optional (no personal data). Paid providers are disabled by default and never used as an automatic fallback. See [ADR-009](docs/DECISIONS.md#adr-009-free-first-ai-provider-strategy).
-- **Tooling:** pnpm, Vitest, Playwright smoke tests from Phase 1 (Chromium), GitHub Actions
-- **Dev environment:** GitHub Codespaces and GitHub Actions only (nothing installed on the local Mac, no local AI models)
-- **Desktop:** Electron — deferred to Phase 7
+There is no audio or AI yet. Phase 1 is the plumbing everything else builds on:
 
-## Getting started
+- A React page that connects to the server over a WebSocket, shows Connected / Disconnected, and echoes messages back.
+- A Fastify server on `127.0.0.1:8787` with a `/healthz` check and a `/ws` endpoint. Every message is checked against a shared schema; bad input gets an error reply, frames over 16 KB are dropped, and connections from unexpected origins are refused.
+- Automatic reconnect with backoff (0.5 s up to 8 s) and a 10 s connect timeout.
+- Clean shutdown on Ctrl+C or SIGTERM.
+- Unit, integration, and Playwright browser tests, run in GitHub Actions on every push and PR.
 
-Open the repo in a **2-core GitHub Codespace**; dependencies install automatically. Then:
+## Running it
+
+Open the repo in a 2-core GitHub Codespace; dependencies install automatically.
 
 ```bash
-pnpm dev      # start client + server; open the forwarded port 5173 from the Ports tab
-              # stop with Ctrl+C
-pnpm lint && pnpm test && pnpm build
-pnpm start    # serve the production build on one port; stop with Ctrl+C
+pnpm dev     # client + server; open port 5173 from the Ports tab. Ctrl+C stops both.
+pnpm lint && pnpm test && pnpm build && pnpm test:e2e
+pnpm start   # production build on one port. Ctrl+C stops it.
 ```
 
-Full instructions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). No API key is needed; real providers (from Phase 3) are configured through Codespaces secrets ([.env.example](.env.example) lists the names). Never commit `.env`.
+More detail, including first-time Playwright setup and troubleshooting: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). No API key is needed.
+
+## Constraints
+
+These shape most of the design decisions:
+
+- **No cost.** Simulated providers by default, then free tiers (Groq, optional Gemini, browser Web Speech). Paid APIs are off by default and never used as a fallback when a free quota runs out ([ADR-009](docs/DECISIONS.md#adr-009-free-first-ai-provider-strategy)).
+- **Nothing installed on my Mac.** Development runs in GitHub Codespaces and CI in GitHub Actions. No local AI models.
+- **Consent and honesty.** Recording will start only when I click Start and always show an indicator. Live use only where AI help is allowed. Metor never hides from screen sharing and never invents experience ([docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md)).
+- **Small footprint.** One package, no database server, few dependencies.
+
+## Docs
+
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md): Codespace setup, commands, troubleshooting
+- [REQUIREMENTS.md](docs/REQUIREMENTS.md): what Metor should do, with priorities
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): components, message protocol, cost controls
+- [SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md): consent, data handling, auth, threats
+- [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md): phases and acceptance criteria
+- [DECISIONS.md](docs/DECISIONS.md): decision records (ADRs)
+- [AGENTS.md](AGENTS.md): rules for AI coding agents working in this repo
+
+## How it's built
+
+I set the requirements, test each phase myself, and review changes before merging. So far the code and docs have been drafted with Claude Code; `.github/copilot-instructions.md` sets up the same rules for Copilot. Commits made with an agent carry a `Co-Authored-By` line.

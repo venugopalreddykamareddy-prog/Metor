@@ -2,7 +2,7 @@
 
 ## 1. Acceptable use
 
-This app is for practice, personal preparation, and meetings or interviews where participants know about the recording/assistance and AI use is permitted. The design supports that by default:
+Metor is for practice, preparation, and meetings or interviews where everyone knows about the recording and AI help is allowed. These controls are on by default:
 
 | Control | Implementation |
 |---|---|
@@ -13,7 +13,7 @@ This app is for practice, personal preparation, and meetings or interviews where
 | Honest answers | AI claims experience only from verified KB items. |
 | Authorized AI use | Live modes require confirming AI assistance is permitted; Gemini free tier is blocked in live modes (§2.2). |
 
-Features that violate these controls will not be accepted, regardless of who requests them.
+I won't merge features that weaken these controls.
 
 ## 2. Data inventory
 
@@ -32,7 +32,7 @@ Features that violate these controls will not be accepted, regardless of who req
 
 ### 2.2 Provider data policies (observed 2026-11-24; re-verify)
 
-| Provider | What it receives | Policy summary | Rule in this app |
+| Provider | What it receives | Policy summary | Rule in Metor |
 |---|---|---|---|
 | Simulated | Nothing | — | Default for dev, CI, demos |
 | Groq (free tier) | Audio segments; prompts incl. KB excerpts and transcript | No retention of inference data by default; may log up to 30 days for reliability/abuse; Zero Data Retention toggle available. Training use not stated — TODO(verify). | Default real provider. **Enable ZDR** in Groq Data Controls before use. |
@@ -47,7 +47,7 @@ Features that violate these controls will not be accepted, regardless of who req
 3. **Local vs provider retention are different.** Deleting locally removes data from this browser only. It does not delete anything the AI provider retained under its own policy. The UI states this next to the delete controls and links the policies in §2.2.
 4. Raw audio is never persisted (no opt-in in MVP).
 
-## 3. Threat model (STRIDE summary)
+## 3. Threats
 
 | Threat | Example | Mitigation |
 |---|---|---|
@@ -106,6 +106,6 @@ Uploaded documents and **transcripts** (anyone in a meeting can say "ignore your
 - [ ] Transcripts not persisted unless opted in; expiry + delete shipped with first storage feature
 - [ ] Data export and "delete everything" available in settings
 
-## 6. Incident response (personal project scale)
+## 6. If an API key leaks
 
-If an API key may have leaked: revoke it in the provider console immediately, create a new key, update the Codespace secret, check provider usage for unexpected use (and confirm no payment method was added), and rewrite git history only if the key was committed (then rotate anyway).
+Revoke it in the provider console immediately, create a new key, update the Codespace secret, check provider usage for unexpected use (and confirm no payment method was added), and rewrite git history only if the key was committed (then rotate anyway).

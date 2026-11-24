@@ -1,6 +1,6 @@
 # Architecture
 
-Consolidates architecture, technical design, audio capture, AI engine, API design, UI/UX, performance, cost, and storage. Split a section into its own file only if it grows past ~300 lines.
+How Metor is put together. Sections describe the target design; the phase that implements each part is in IMPLEMENTATION_PLAN.md. Nothing here is built yet unless that plan marks it done.
 
 ## 1. Principles
 

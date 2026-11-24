@@ -1,6 +1,6 @@
-# AGENTS.md — Rules for AI Coding Agents
+# AGENTS.md: rules for AI coding agents
 
-These rules apply to GitHub Copilot Agent Mode, Claude Code, and any other agent working in this repository. Read this file and the relevant `docs/` file before changing code.
+These rules apply to Claude Code, GitHub Copilot, and any other agent working on Metor. Read this file and the relevant `docs/` file before changing code.
 
 ## Scope discipline
 

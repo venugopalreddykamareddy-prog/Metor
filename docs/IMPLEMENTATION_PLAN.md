@@ -36,7 +36,7 @@ Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts,
 
 ---
 
-## Phase 1 — Lightweight web application foundation 🔍 (in review)
+## Phase 1 — Lightweight web application foundation ✅ (merged, PR #2)
 
 **Objective:** Runnable skeleton: Vite React client + Fastify server + typed WebSocket echo, with pinned toolchain, devcontainer, lint, typecheck, tests, a browser smoke test, and CI.
 
@@ -129,14 +129,14 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 ```
 
 **Acceptance criteria**
-- [x] `pnpm dev` starts both; the app loads through the Vite port; status turns "Connected" (verified with headless Chromium on `127.0.0.1:5173`; owner to confirm via the forwarded URL)
+- [x] `pnpm dev` starts both; the app loads through the Vite port; status turns "Connected" (headless Chromium on `127.0.0.1:5173`, and owner tested via the forwarded Codespaces URL)
 - [x] Typing a message shows the echo; sending invalid JSON returns an error message
-- [x] Killing the server shows "Disconnected"; restarting reconnects automatically (~2.3 s after restart)
+- [x] Killing the server shows "Disconnected"; restarting reconnects automatically (~2.3 s after restart; owner confirmed in the Codespaces browser)
 - [x] `curl localhost:8787/healthz` → `{"status":"ok"}`
 - [x] `pnpm build && pnpm start` serves the built client, and WS works on the single port (Playwright smoke test)
-- [x] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally; CI: see PR checks
+- [x] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally and in CI
 - [x] CI uses the Node version from `.nvmrc` and the pnpm version from `packageManager`
-- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private (image, `sudo corepack enable`, and frozen install verified in Docker; full Codespace rebuild for the owner)
+- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private (image, `sudo corepack enable`, and frozen install verified in Docker; a full Codespace rebuild is still to do)
 - [x] No API key referenced anywhere in `client/`; no credentials in any URL (CI greps `dist/client`)
 
 **Risks:** Codespaces port forwarding and WS through the Vite proxy — verify early. Over-scaffolding by Copilot — reject extra libraries. Devcontainer changes require a Codespace rebuild (a few minutes).

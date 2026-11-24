@@ -1,32 +1,25 @@
 # Changelog
 
-All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions will follow [Semantic Versioning](https://semver.org/) once there is a release.
 
 ## [Unreleased]
 
 ### Added
 
-- Phase 1 foundation: single-package pnpm project (Node 24 via `.nvmrc`/`engines`, pnpm pinned in `packageManager`); Vite + React client with connection status bar, message input, and echo log; Fastify server bound to `127.0.0.1` with `GET /healthz` and WebSocket `/ws` echo.
-- Shared zod message schemas (`shared/messages.ts`) validated on every WebSocket frame; invalid JSON, schema violations, and binary frames get `error bad_request`; frames over 16 KB are closed with 1009; WebSocket upgrades require an allowed `Origin` (Codespaces forwarded URLs added automatically).
-- WebSocket client with automatic reconnect (backoff with jitter, 0.5 s → 8 s) and a 10 s connect timeout.
-- Vitest unit and integration tests and Playwright smoke tests against the production build (Chromium headless shell).
-- GitHub Actions CI: lint, typecheck, tests, build, client-bundle secret check, Playwright smoke tests. Actions pinned to commit SHAs, with Dependabot updating them monthly.
-- `.devcontainer/devcontainer.json` (Node 24 image, 2-core host, only port 5173 forwarded) and `docs/DEVELOPMENT.md` (startup, shutdown, testing, troubleshooting).
-- ADR-010: Node 24 native TypeScript instead of `tsx`, `pnpm --parallel` instead of `concurrently`, zod for shared validation, TypeScript pinned to 6.0.
-
-- Phase 0 documentation: README, AGENTS.md, Copilot instructions, requirements, architecture, security and privacy, implementation plan, and architecture decision records.
-- `.gitignore` and `.env.example`.
-- From PR #1 review: single-user cookie authentication design (ADR-007), persisted spend ledger with reservations (ADR-008), WebSocket resume semantics, no-persistence-by-default retention rules, devcontainer and toolchain pinning plan, early browser smoke tests, safer rollback guidance.
-- Free-first AI provider strategy (ADR-009): $0/month target; provider adapters selected by `STT_PROVIDER` / `ANSWER_PROVIDER`; Groq free tier for transcription and answers; browser Web Speech API evaluation with browser and audio-source limits; optional Gemini free tier restricted to non-personal data; simulated transcription and simulated answer generation; `ALLOW_PAID_PROVIDERS=false` by default; quota exhaustion pauses without any paid fallback; authentication required for every real cloud API, including free ones. Provider facts verified from official docs on 2026-11-24.
-- Requirements FR-A8, FR-Q9, FR-P1–FR-P5 and provider data-policy table in SECURITY_PRIVACY.md.
+- Phase 1 (PR #2): pnpm project with Node 24 and pnpm pinned; React + Vite client with connection status and a message echo; Fastify server on `127.0.0.1` with `/healthz` and `/ws`.
+- `/ws` checks the `Origin` header, validates every message with shared zod schemas, rejects binary frames and frames over 16 KB, and logs only a fixed error code for bad input.
+- Client reconnect with backoff (0.5 s → 8 s) and a 10 s connect timeout. Server shuts down cleanly with a 5 s limit.
+- Vitest unit/integration tests, Playwright smoke tests against the production build, and GitHub Actions CI (actions pinned to commit SHAs, Dependabot for updates).
+- Devcontainer (Node 24, 2-core, only port 5173 forwarded) and `docs/DEVELOPMENT.md`.
+- ADR-010: Node 24 runs TypeScript directly (no `tsx`), `pnpm --parallel` instead of `concurrently`, zod for validation, TypeScript pinned to 6.0.
+- Phase 0 docs (PR #1): requirements, architecture, security and privacy, implementation plan, decision records, and agent rules. `.gitignore` and `.env.example`.
+- Designs from the PR #1 review: cookie-based login (ADR-007), persisted spend ledger with reservations (ADR-008), WebSocket resume rules, no transcript storage unless opted in, safer rollback steps.
+- Free-first provider plan (ADR-009): simulated by default, Groq free tier, Web Speech evaluation, optional Gemini without personal data, paid providers off, no paid fallback, login required for any real provider. Provider facts checked against official docs on 2026-11-24.
 
 ### Changed
 
-- Spend ledger keeps the full reservation when provider usage is unknown and tracks free-tier quota units (ADR-008).
-- Provider budget alerts are no longer described as hard spending caps.
-- Logout and authentication expiry now terminate active WebSocket connections (close code `4401`), with tests in Phase 2.
-- `.env.example`: replaced `OPENAI_API_KEY` and generic model variables with provider-selection, Groq, and Gemini placeholders; `DAILY_SPEND_LIMIT_USD` defaults to `0`.
-- README: Playwright smoke tests start in Phase 1; free-first stack summary.
-- AGENTS.md and Copilot instructions: development constraints (Codespaces/Actions only, no local models, minimal dependencies) and free-first provider rules.
-- NFR-1 split into streaming (Web Speech) and per-utterance (Groq) latency targets.
-- From review of bb58f54: Groq segments ≥ 8 s with hourly quota math; NFR-2 measured from the final transcript plus per-provider end-to-end target NFR-2b; shadow-cost tracking and published free-tier quotas to guard against billing-enabled accounts; rolling-window quota counting; Groq Llama free-tier availability marked TODO(verify); Gemini acknowledgement covers the EEA/Switzerland/UK rule.
+- Ledger keeps the full reservation when provider usage is unknown and tracks free-tier quotas over rolling windows. Provider budget alerts are not treated as hard caps.
+- Logout and session expiry will close open WebSockets (Phase 2).
+- Groq audio segments are at least 8 s so the 10 s minimum per request doesn't exhaust the hourly quota.
+- Split answer latency into NFR-2 (from final transcript) and NFR-2b (end to end, per provider).
+- README: Metor as the project name, current status and what Phase 1 does, constraints, AI-assisted development note.
