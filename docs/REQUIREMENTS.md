@@ -55,6 +55,8 @@ Testing Phase 3 showed that several questions spoken without a pause end up in o
 | FR-E5 | A pause alone doesn't complete a question: wait while the sentence is open, ends on a dangling word, or more speech follows quickly | P0 |
 | FR-E6 | One answer per question: partial transcripts, repeated phrases, and recognizer repeats never trigger a second answer; a question that grows ("what is BGP… and how does it pick a path") updates the pending one | P0 |
 | FR-E7 | Show extracted questions as their own list, linked to the clean sentences they came from; the user can merge, split, dismiss, or answer one manually | P0 |
+| FR-E8 | Tell a duplicate transcript event (same words within seconds, overlapping audio) apart from a genuine repeat (asked again later, often with "again" or "let me repeat"). Duplicates are dropped; a genuine repeat brings back the earlier answer, with an option for a shorter re-explanation | P0 |
+| FR-E9 | A completed question replaces an earlier incomplete version of itself ("can you please help me to…" → "…to understand BGP communities"); the incomplete one is never answered | P0 |
 
 ### 2.2b Understanding and validating the question (Phases 4–5)
 
@@ -72,6 +74,7 @@ Before answering, Metor works out what kind of question it is and whether it res
 | FR-U8 | Show a short **assessment** separately from the suggested answer when something is off. Labels: incorrect premise, unrecognized term, possible transcription error, clarification needed, unrealistic requirement, insufficient information, unverified experience, off-topic. No assessment for ordinary questions; difficulty or unusual-but-real technology is not a reason to flag | P0 |
 | FR-U9 | Say so when something can't be verified. Never claim a check against documentation happened unless it did. Verifying against official docs is optional and only from sources Metor actually has (e.g. curated notes in the KB, Phase 5) | P0 |
 | FR-U10 | Tell speech-recognition mistakes apart from real but unfamiliar technology: a near match to a known term in a technical context is a likely mishearing (offer the correction); a well-formed name with no near match is unfamiliar (say so, ask) | P0 |
+| FR-U11 | Ambiguous acronyms (AAA, AA, PCI, CSP, ARP vs ARPA…): resolve from context and say which meaning the answer assumes, or ask. Never pick a meaning silently | P0 |
 
 ### 2.2c Conversation awareness (Phase 4)
 
@@ -179,7 +182,7 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
 | NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
-| NFR-12 | Answer quality | Measured on the evaluation set (`eval/answer-questions.json`, 110 questions; method in docs/ANSWER_EVALUATION.md): factual accuracy, hallucination rate (target 0 on fabricated terms and experience traps), false-positive flags on genuine/unusual-but-real questions (target ≤ 5%), clarification quality, naturalness, latency |
+| NFR-12 | Answer quality | Measured on the evaluation set (`eval/answer-questions.json`, 113 questions; method in docs/ANSWER_EVALUATION.md): factual accuracy, hallucination rate (target 0 on fabricated terms and experience traps), false-positive flags on genuine/unusual-but-real questions (target ≤ 5%), clarification quality, naturalness, latency |
 
 ## 5. Out of scope
 

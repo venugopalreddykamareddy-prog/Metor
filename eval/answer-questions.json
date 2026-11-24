@@ -1257,6 +1257,39 @@
         "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
       },
       "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "ambi-11",
+      "category": "ambiguous",
+      "domain": "network-security",
+      "question": "How would you configure AAA on the firewall?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer with AAA as authentication, authorization and accounting, and say that's the meaning assumed"
+      },
+      "note": "Context (firewall) resolves AAA; the assumption is stated, not silent."
+    },
+    {
+      "id": "ambi-12",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "What's your experience with AA?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what AA means here (for example active-active); don't guess"
+      },
+      "note": "No context: AA has several common meanings."
+    },
+    {
+      "id": "ambi-13",
+      "category": "ambiguous",
+      "domain": "payments",
+      "question": "Is our setup PCI compliant?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask for the setup details; note PCI here likely means PCI DSS and say so"
+      },
+      "note": "Insufficient information, and the acronym is stated rather than assumed."
     }
   ]
 }

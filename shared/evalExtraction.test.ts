@@ -7,6 +7,8 @@ interface Case {
   input: string;
   expected: { questions: { text: string; kind: string }[]; ignored?: { text: string; kind: string }[]; incomplete?: boolean };
   note: string;
+  /** Timed transcript updates, for cases that depend on what came earlier (superseding, repeats). */
+  events?: { atMs: number; text: string }[];
 }
 
 const { cases } = JSON.parse(readFileSync(new URL('../eval/question-extraction.json', import.meta.url), 'utf8')) as {
@@ -33,8 +35,16 @@ describe('question extraction fixture', () => {
 
   it('uses known kinds', () => {
     for (const c of cases) {
-      for (const q of c.expected.questions) expect(['question', 'request', 'follow_up'], c.id).toContain(q.kind);
+      for (const q of c.expected.questions) expect(['question', 'request', 'follow_up', 'repeat'], c.id).toContain(q.kind);
       for (const q of c.expected.ignored ?? []) expect(['greeting', 'filler', 'statement', 'abandoned'], c.id).toContain(q.kind);
+    }
+  });
+
+  it('uses ordered events that end with the input', () => {
+    for (const c of cases.filter((c) => c.events)) {
+      const times = c.events?.map((e) => e.atMs) ?? [];
+      expect(times, c.id).toEqual([...times].sort((a, b) => a - b));
+      expect(c.events?.at(-1)?.text, c.id).toBe(c.input);
     }
   });
 
@@ -42,5 +52,6 @@ describe('question extraction fixture', () => {
     expect(cases.some((c) => c.expected.questions.length >= 3)).toBe(true);
     expect(cases.filter((c) => c.expected.questions.length === 0).length).toBeGreaterThanOrEqual(2);
     expect(cases.some((c) => c.expected.incomplete)).toBe(true);
+    expect(cases.some((c) => c.events && c.expected.questions.some((q) => q.kind === 'repeat'))).toBe(true);
   });
 });

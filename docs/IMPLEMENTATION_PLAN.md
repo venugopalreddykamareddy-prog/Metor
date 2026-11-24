@@ -222,10 +222,19 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Acceptance**
 - 0 duplicate requests in the test script; never more than one LLM request per detected question.
-- Extraction fixture (`eval/question-extraction.json`, 22 cases): the right questions, word for word, in ≥ 20 of 22 cases; no answer for the filler-only and incomplete cases (unit tests).
+- Extraction fixture (`eval/question-extraction.json`): the right questions, word for word, in ≥ 90% of cases; no answer for filler-only and incomplete cases (unit tests).
+- Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…") are extracted as questions.
+- Incomplete phrases ("can you please help me to") are never answered; the answer waits until the question finishes, and a completed question replaces its earlier incomplete version.
+- Several questions in one continuous stretch are extracted separately; a rapid topic change starts a new item and cancels the in-flight answer.
+- Duplicate transcript events are dropped; a genuine repeat re-shows the earlier answer without a new request.
+- Ambiguous acronyms (AAA, AA, …) are resolved from context with the assumption stated, or a clarifying question is asked; never a silent guess.
+- Original meaning is preserved: extracted questions are word-for-word spans of the clean transcript.
+- Question detection accuracy measured on the extraction fixture plus the answer evaluation set: precision and recall ≥ 90% for "is this an answerable question".
+- End-to-end latency measured and recorded per transcription mode: speech end → first answer token (NFR-2b), and final transcript → first token (NFR-2).
 - `irrelevant` items produce no answer card (≥ 7 of 8); several questions at once are split.
 - Final transcript → first token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b recorded per transcription mode.
-- On the 110-question set with the free-tier provider: assessment accuracy ≥ 85%, false-positive flags ≤ 5%, **0 hallucinations** on fabricated terms and experience traps, factual accuracy ≥ 1.7/2, naturalness ≥ 4/5 (docs/ANSWER_EVALUATION.md).
+- Answers are natural and conversational, not textbook-style (naturalness ≥ 4/5). STAR is used only for experience questions, and only from verified KB stories once Phase 5 exists; before that, behavioral questions get a labeled example approach (FR-Q8).
+- On the answer evaluation set (technical, behavioral, tricky, fabricated, irrelevant, misleading questions) with the free-tier provider: assessment accuracy ≥ 85%, false-positive flags ≤ 5%, **0 hallucinations** on fabricated terms and experience traps, factual accuracy ≥ 1.7/2, naturalness ≥ 4/5 (docs/ANSWER_EVALUATION.md).
 - Cancel stops the upstream request; the reservation is kept unless usage is reported. Gemini never receives KB content (test). Quota exhaustion never selects another provider (test).
 
 ---

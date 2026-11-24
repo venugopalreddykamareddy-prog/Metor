@@ -181,7 +181,7 @@ Three layers, each kept separately: **raw** fragments (as heard) → **clean** s
 | greeting / small talk | "hi, thanks for joining", "can you hear me", "let me share my screen" | no |
 | filler | "okay", "right", "so yeah", "mm" | no |
 | statement / context | "we run payments on AKS", "the cluster has 40 nodes" | no; attached to the next question as context |
-| request | "walk me through…", "tell me about…", "explain…", "describe…", "give me an example of…" | yes |
+| request | "walk me through…", "talk about…", "tell me about…", "explain…", "describe…", "give me an example of…" (no `?` needed) | yes |
 | question | interrogative opening or `?` | yes |
 
 **Boundary cues when punctuation is missing** (FR-E1). One continuous clean sentence like "how does BGP pick a path what about OSPF and how would you troubleshoot a flapping session" should give three questions. Cues, in order of strength:
@@ -200,11 +200,16 @@ Three layers, each kept separately: **raw** fragments (as heard) → **clean** s
 
 The user can always press **Answer this**.
 
+**Incomplete and superseded questions** (FR-E5, FR-E9). "Can you please help me to" ends on an infinitive "to" with nothing after it, so it waits. When the same opening comes back completed ("…help me to understand BGP communities"), the completed text replaces the pending item, and only that gets answered. An incomplete fragment that never completes is shown greyed out in the list and isn't answered.
+
+**Rapid topic changes.** Each question is extracted on its own. A new topic after a short pause starts a new item, even mid-answer: the in-flight answer is cancelled (§5.1) and context from the old topic isn't carried into the new one unless it's a follow-up.
+
 **No duplicate answers** (FR-E6).
 - Each extracted question has an id from its source sentence keys.
 - If an answered question grows, the new text replaces the pending one and doesn't create a second question.
 - A normalized question within 0.8 token overlap of one of the last 10 is skipped.
 - Recognizer repeats are already dropped by the clean view.
+- **Duplicate event vs genuine repeat** (FR-E8): the same normalized text within ~5 s and overlapping audio is a duplicate event and is dropped. The same question later, or with a repeat cue ("again", "let me repeat", "sorry, I'll ask again"), is a genuine repeat. It re-shows the earlier answer instead of making a new request, with a button for a shorter re-explanation.
 
 **Context and follow-ups.** Statements just before a question, and the previous question and answer, travel with it as context. Short follow-ups ("and if the local preference is equal?") are marked as follow-ups rather than standalone questions.
 
@@ -249,6 +254,7 @@ Implements FR-U1–FR-U9 and FR-C1–FR-C4.
 | Several questions, statements, small talk | Question extraction (§5.2) |
 | Duplicate | Same normalized question as one of the last 10 → skip (FR-Q3) |
 | Unknown terms | Technical-looking tokens (acronyms, CamelCase, "the X command/protocol/tool") not in the local glossary (`shared/vocabulary.ts` plus a larger list of real technologies and the user's own "internal tools" list in Phase 5) → passed as a **hint** "not in Metor's glossary", never as a verdict |
+| Ambiguous acronyms (FR-U11) | A small list of acronyms with several common meanings: AAA (authentication/authorization/accounting; triple-A rating; Arrange-Act-Assert), AA (active-active; Azure AD shorthand; other), PCI (PCI DSS; PCI bus), CSP (cloud service provider; Content Security Policy), ARP/ARPA. Context words choose a meaning ("AAA on the firewall" → authentication, authorization, accounting), and the answer says which one it assumed. No context → `clarification_needed` |
 | Possible mishearing vs unfamiliar (FR-U10) | Likely mishearing: the clean view corrected it, or it is within edit distance 2 (or the same consonant skeleton) of a glossary term in a technical sentence, e.g. "cube let" ≈ kubelet. Hint with raw and suggested text. Unfamiliar: a well-formed name with no near match ("Shipyard", "Kubeflux"). Hint "not in glossary"; the answer says so and asks |
 
 **One LLM request** returns a short header and then the answer, so validation adds no extra call:
@@ -278,7 +284,7 @@ The client parses the header as it streams and shows the assessment as a separat
 
 **Conversation context:** the last 3–5 turns verbatim plus a rolling summary (§5.5). The header's `TYPE: follow_up` tells the UI the answer continues the previous one. A correction ("sorry, I meant…") replaces the previous question instead of adding a new one.
 
-**Evaluation:** `eval/answer-questions.json` (110 questions in 11 categories) and docs/ANSWER_EVALUATION.md. Runs use simulated answers in CI (format checks only) and the free-tier provider manually for quality.
+**Evaluation:** `eval/answer-questions.json` (113 questions in 11 categories) and docs/ANSWER_EVALUATION.md. Runs use simulated answers in CI (format checks only) and the free-tier provider manually for quality.
 
 ### 5.5 Context management
 

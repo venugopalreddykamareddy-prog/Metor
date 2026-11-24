@@ -365,6 +365,152 @@
         ]
       },
       "note": "Acknowledgement, not a question."
+    },
+    {
+      "id": "ext-23",
+      "input": "can you please help me to",
+      "expected": {
+        "questions": [],
+        "incomplete": true
+      },
+      "note": "Ends on 'to' with nothing after it: wait, never answer."
+    },
+    {
+      "id": "ext-24",
+      "input": "can you please help me to understand bgp communities",
+      "expected": {
+        "questions": [
+          {
+            "text": "can you please help me to understand bgp communities",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "The completed question replaces the earlier incomplete version; one answer.",
+      "events": [
+        {
+          "atMs": 0,
+          "text": "can you please help me to"
+        },
+        {
+          "atMs": 1800,
+          "text": "can you please help me to understand bgp communities"
+        }
+      ]
+    },
+    {
+      "id": "ext-25",
+      "input": "talk about how you would set up observability for a new service",
+      "expected": {
+        "questions": [
+          {
+            "text": "talk about how you would set up observability for a new service",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "'talk about' is a request even without a question mark."
+    },
+    {
+      "id": "ext-26",
+      "input": "describe the difference between a load balancer and a reverse proxy",
+      "expected": {
+        "questions": [
+          {
+            "text": "describe the difference between a load balancer and a reverse proxy",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "'describe' request."
+    },
+    {
+      "id": "ext-27",
+      "input": "how do you size a kafka cluster okay never mind that what is your approach to terraform module versioning",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is your approach to terraform module versioning",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "how do you size a kafka cluster",
+            "kind": "abandoned"
+          },
+          {
+            "text": "okay never mind that",
+            "kind": "filler"
+          }
+        ]
+      },
+      "note": "Rapid topic change: the first question is dropped with 'never mind'."
+    },
+    {
+      "id": "ext-28",
+      "input": "how does dns resolution work",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does dns resolution work",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Duplicate transcript event 0.8 s later: one question.",
+      "events": [
+        {
+          "atMs": 0,
+          "text": "how does dns resolution work"
+        },
+        {
+          "atMs": 800,
+          "text": "how does dns resolution work"
+        }
+      ]
+    },
+    {
+      "id": "ext-29",
+      "input": "sorry let me ask again how does dns resolution work",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does dns resolution work",
+            "kind": "repeat"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "sorry let me ask again",
+            "kind": "filler"
+          }
+        ]
+      },
+      "note": "Genuine repeat 45 s after the first time: re-show the earlier answer, no new request.",
+      "events": [
+        {
+          "atMs": 0,
+          "text": "how does dns resolution work"
+        },
+        {
+          "atMs": 45000,
+          "text": "sorry let me ask again how does dns resolution work"
+        }
+      ]
+    },
+    {
+      "id": "ext-30",
+      "input": "what is aaa",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is aaa",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Ambiguous acronym with no context: extraction keeps it; validation asks which meaning (FR-U11)."
     }
   ]
 }

@@ -4,7 +4,7 @@ How suggested answers will be checked once Phase 4 exists. The questions are in 
 
 ## The question set
 
-110 questions, each with the expected assessment, the expected behavior, and a note with the key fact for grading. Follow-ups include the earlier turns as `context`.
+113 questions, each with the expected assessment, the expected behavior, and a note with the key fact for grading. Follow-ups include the earlier turns as `context`.
 
 | Category | Count | What it tests |
 |---|---|---|
@@ -13,14 +13,14 @@ How suggested answers will be checked once Phase 4 exists. The questions are in 
 | fabricated | 12 | Made-up commands, products, protocol features; one realistic internal tool ("Shipyard") that should be treated as unfamiliar, not false |
 | incorrect_premise | 12 | Questions built on a wrong fact (UDP ordering, OSPF as distance-vector, 99.99% = 4 hours/month) |
 | tricky_troubleshooting | 10 | Real incidents where the obvious answer is wrong (empty CrashLoopBackOff logs, du vs df) |
-| ambiguous | 10 | Missing referent or numbers, plus two unrealistic requirements |
+| ambiguous | 13 | Missing referent or numbers, two unrealistic requirements, and ambiguous acronyms (AAA, AA, PCI) |
 | irrelevant | 8 | Greetings, logistics, small talk, an unfinished sentence: no answer card |
 | misheard | 10 | Transcription errors ("cube cuddle", "eye am roles"); one isn't in the correction list on purpose |
 | experience_trap | 10 | "You've done X at huge scale, right?": only verified experience may be claimed |
 | follow_up | 8 | Continuations, a correction ("I meant mutual TLS"), a topic switch, three questions at once |
 | behavioral | 10 | STAR from verified stories, or an honest "no matching story" plus a labeled hypothetical |
 
-Question extraction has its own fixture, `eval/question-extraction.json`: 22 stretches of continuous, unpunctuated speech with the questions to extract, word for word (ARCHITECTURE §5.2). It is a unit-test fixture rather than an LLM evaluation, because extraction is local and rule-based.
+Question extraction has its own fixture, `eval/question-extraction.json`: 30 stretches of continuous, unpunctuated speech with the questions to extract, word for word (ARCHITECTURE §5.2). It is a unit-test fixture rather than an LLM evaluation, because extraction is local and rule-based.
 
 ## Metrics
 
@@ -40,7 +40,7 @@ Automatic checks: assessment label, false-positive rate, no-answer cases, latenc
 ## Running it (Phase 4)
 
 - **CI:** simulated answers only. Checks that every question produces a parseable header and that local pre-checks skip the `irrelevant` items. No API calls.
-- **Manual:** one pass over all 110 questions with the free-tier answer provider, about 110 requests, well under the daily free limit. Run it after prompt changes and record results below.
+- **Manual:** one pass over all 113 questions with the free-tier answer provider, about 113 requests, well under the daily free limit. Run it after prompt changes and record results below.
 
 ## Results
 
