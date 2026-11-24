@@ -45,7 +45,7 @@ flowchart LR
   WS_C -. transcript .-> QD
 ```
 
-**Web Speech path:** with `STT_PROVIDER=webspeech` the browser recognizes speech itself (no key, no server relay); transcript text is sent to the server only as part of `answer.request`. It is enabled only for an authenticated user (§6.1).
+**Web Speech path:** in Browser speech mode the browser recognizes speech itself (no key, no audio to the Metor server); transcript text reaches the server only later, as part of `answer.request` (Phase 4). It is offered only after login (§6.1).
 
 **Alternative evaluated for Phase 3** (see ADR-005): the browser connects directly to the provider's realtime transcription endpoint using a short-lived token minted by our server. This removes one network hop. Adopt only if the provider officially supports ephemeral client tokens for transcription.
 
@@ -55,16 +55,17 @@ flowchart LR
 |---|---|---|
 | Audio capture | `client/src/audio/` | `getUserMedia` / `getDisplayMedia`, resample to provider format in an AudioWorklet, chunk ~100 ms frames |
 | WS client | `client/src/net/` | Typed messages, reconnect with exponential backoff + jitter, send queue; on close code `4401` stops capture and returns to login |
-| Web Speech STT | `client/src/stt/webspeech.ts` | Optional browser recognizer (Phase 3 evaluation); same transcript events as the server path |
+| Web Speech STT | `client/src/stt/webspeech.ts` | Browser recognizer on Metor's own mic track; restarts after silence; same transcript events as the server path |
+| Accuracy check | `client/src/eval/` | Word error rate and technical-term recall against a read-aloud script |
 | Question detector | `client/src/detect/` | Heuristic detection (pure functions), de-dup by normalized-text hash |
 | Session store | `client/src/store/` | IndexedDB wrapper (native API or a tiny wrapper, e.g. `idb` ~1 KB) |
 | UI | `client/src/ui/` | Transcript pane, answer pane, controls, settings, KB editor |
 | Auth | `server/src/auth/` | Passphrase login, in-memory cookie sessions; tracks WebSockets per session and closes them on logout/expiry (SECURITY_PRIVACY §3.1) |
 | WS gateway | `server/src/ws/` | Cookie + Origin check on upgrade, schema validation, per-connection rate limits, session resume (§6.3) |
-| Provider config | `server/src/providers/` | Reads `STT_PROVIDER`, `ANSWER_PROVIDER`, `ALLOW_PAID_PROVIDERS`; startup checks (§5.5) |
-| Transcription adapter | `server/src/stt/` | Provider-agnostic interface; `SimulatedSTT`, `GroqSTT` (segment upload) |
+| Transcription adapter | `server/src/stt/` | One interface; simulated and Groq (segment upload) implementations |
+| Vocabulary | `shared/vocabulary.ts` | Technical terms: Whisper prompt, Web Speech phrase boosts, and corrections of common mishearings |
 | Answer engine | `server/src/answer/` | Classify → build prompt → stream LLM → forward tokens; cancellation. Adapters: `SimulatedAnswer`, `GroqAnswer`, optional `GeminiAnswer` |
-| Spend + quota ledger | `server/src/limits/` | File-backed ledger; reserve cost and free-tier quota before every upstream call, reconcile after (§11.1) |
+| Usage ledger | `server/src/limits/` | File-backed free-tier usage; charged before every Groq call (§11.1) |
 | Shared schemas | `shared/` | Message types + runtime validation with `zod` (ADR-010) |
 
 ## 4. Audio capture
@@ -107,25 +108,28 @@ sequenceDiagram
 
 ### 4.3 Audio format
 
-- Capture at device rate, resample to the provider's required rate/encoding in an AudioWorklet (commonly 16 kHz or 24 kHz mono PCM16 — **TODO(verify)** against the chosen provider).
+- Capture at device rate, downsample to 16 kHz mono PCM16 in an AudioWorklet (Whisper's native rate).
 - Raw audio is never written to disk or IndexedDB. ("Keep recordings" is not in the MVP; adding it needs an ADR.)
-- **Groq segments:** Groq transcription is request/response (no documented streaming). The server buffers PCM16 per utterance, wraps it as WAV with a 44-byte header (no ffmpeg or audio library), and uploads it.
-- **Segment sizing (quota math):** each request counts as at least 10 s, and the listed Whisper limits are 20 requests/min and 7,200 audio-seconds/hour (Developer plan; free-tier values may be lower). Short segments break this: 3 s segments during continuous speech mean ~20 requests/min and ~12,000 counted seconds/hour, exhausting the hourly quota in ~36 minutes. Rules:
-  - Close a segment on silence **only once it holds ≥ 8 s of audio**; hard cap 30 s.
-  - Exception: a silence that ends a likely question (Groq gives no partials to run §5.2 heuristics on, so use silence ≥ 800 ms) may close a shorter segment, at most 2 per minute.
-  - Keep a rolling one-hour count of *counted* seconds (`max(len, 10 s)`); when it would exceed `FREE_QUOTA_SAFETY_RATIO` × the hourly limit, lengthen segments to the 30 s cap and warn the user; at the limit, pause with `quota_exhausted`.
-  - Worked check: 1 h of continuous speech in 10 s segments = 360 requests (6/min), 3,600 counted seconds — within both limits.
+- **Groq segments** (`server/src/stt/groq.ts`): Groq transcribes uploaded files, not streams. The server collects speech into segments, wraps them as WAV (44-byte header, no audio library), and uploads with `language=en`, `temperature=0`, `response_format=verbose_json`, and a short technical-vocabulary `prompt`.
+  - **Voice detection:** a frame is speech if its RMS level is above both -50 dBFS and an adaptive noise floor + 12 dB. The floor drops instantly and rises slowly, so steady background noise doesn't count. Segments start at the first speech frame with 300 ms of pre-roll.
+  - **Sizing (quota math):** Groq counts each request as at least 10 s, and the listed Whisper limits are 20 requests/min and 7,200 audio-seconds/hour. A segment closes at a 0.7 s pause once it holds ≥ 8 s, or at 30 s. Up to 2 segments a minute may close early after a 1.5 s pause, so short answers don't wait 8 s. Worked check: 1 h of continuous speech in ~10 s segments ≈ 360 requests and ≈ 3,600 counted seconds, within both limits.
+  - **Never sent:** segments with under 300 ms of speech (silence, clicks). Whisper invents text on silence, so Metor also drops returned segments with `no_speech_prob ≥ 0.6` and short "Thank you."-style outputs.
+  - **Order and failures:** uploads run one at a time so finals stay in order; 20 s timeout. A 429 pauses uploads until `retry-after`; network/HTTP errors are reported and the next segment tries again. Neither switches providers.
+  - The UI shows "…" while a segment is being collected; text arrives a few seconds after you pause.
 
-### 4.4 Browser Web Speech API (Phase 3 evaluation)
+### 4.4 Browser Web Speech API (`client/src/stt/webspeech.ts`)
 
-| Aspect | Finding / rule |
+| Aspect | How Metor handles it |
 |---|---|
-| Where recognition runs | Browser-dependent. In server-based mode audio goes to the browser vendor's service (TODO(verify) Chrome's current data policy) and does not work offline. Treated as a **real cloud API**: login required, disclosure shown. |
-| On-device mode | `processLocally = true` needs a one-time language-pack download. **Not used** (no local model downloads, ADR-003/009). |
-| Audio sources | Microphone by default. Tab audio needs `start(audioTrack)` with a `getDisplayMedia` track: Chromium 135+ and Firefox 160+ only; TODO(verify) that a display-capture track works in practice. Safari: mic only. |
-| Behavior limits | Recognition may end on silence or after a time limit; the client restarts it while the user's session is active and shows a gap marker. No speaker labels. Accuracy on technical vocabulary must be measured against the same 3 test recordings used for Groq. |
-| Cost / quota | No key and no API bill. No quota is documented; treat rate limiting by the vendor as a possible error and surface it. |
-| Server visibility | The server never sees the audio, so the ledger does not apply; per-session minute limits are enforced client-side. |
+| Where recognition runs | Browser-dependent. Chrome and Edge send audio to Google or Microsoft servers and need a network connection. Treated as a cloud API: offered only after login, and the consent dialog says where audio goes. |
+| Mic track | Metor opens the mic itself and passes the track to `start(track)` (Chrome 135+, Firefox 160+), so Stop provably releases the mic. Older browsers ignore the argument and open the default mic. |
+| On-device mode | `processLocally = true` needs a language-pack download. **Not used** (no local model downloads, ADR-003/009). |
+| Vocabulary | Technical terms are passed as `phrases` with boost 3 where `SpeechRecognitionPhrase` exists (Chrome 142+). If the service rejects them (`phrases-not-supported`), Metor restarts without them. Finals also go through the term corrections. |
+| Silence and restarts | Chrome ends continuous recognition after silence or about a minute. Metor restarts it while recording. More than 5 restarts in 10 s, 3 network errors in a row, or a permission/service error stops recording and releases the mic. `no-speech` is ignored. |
+| Duplicates | A final whose normalized text matches the previous final is dropped (recognizers sometimes repeat the last sentence after a restart). |
+| Latency | Measured as the time from the last interim result to the final. That shows how long finalization takes, not true speech-to-text latency. |
+| Tab audio | Not built yet (FR-A7). |
+| Cost / quota | No key and no API bill. The server never sees the audio, so the usage ledger doesn't apply. |
 
 ## 5. AI engine
 
@@ -191,18 +195,20 @@ Model identifiers are **not** hard-coded in code. They come from env vars after 
 
 | Setting | Values | Default |
 |---|---|---|
-| `STT_PROVIDER` | `simulated`, `groq`, `webspeech` | `simulated` |
+| Transcription mode | Chosen per recording in the UI: Simulated, Browser speech (if the browser has it), Groq Whisper (if `GROQ_API_KEY` is set) | Simulated (last choice is remembered) |
+| `GROQ_API_KEY` | free-tier key | empty (Groq not offered) |
 | `ANSWER_PROVIDER` | `simulated`, `groq`, `gemini` | `simulated` |
 | `ALLOW_PAID_PROVIDERS` | `true`, `false` | `false` |
-| `GROQ_TRANSCRIPTION_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs | empty (required when Groq is selected; classify falls back to the answer model) |
+| `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3-turbo` or `whisper-large-v3` (verified 2026-11-24) | `whisper-large-v3-turbo` |
+| `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs (Phase 4) | empty |
 | `GEMINI_ANSWER_MODEL` | verified model ID | empty |
 
 **Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table, and how it reports usage. Free-tier adapters charge $0 against `DAILY_SPEND_LIMIT_USD` but also record a **shadow cost** at the provider's paid prices, so usage that a billing-enabled account would be charged for is visible in the UI and logs.
 
-**Billing-enabled accounts are the main $0 risk.** If a payment method is added to the Groq organization or billing is enabled on the Gemini project, the same API key silently becomes paid (and Gemini's data terms change). The app cannot read billing state today, so it defends in depth:
-- Local quotas come from the **published free-tier limits** checked into server config, never from the account's limits page (a paid account shows higher limits).
-- In Phases 3–4, check whether the provider exposes the account tier (for example rate-limit headers that differ by plan). TODO(verify). If it does, refuse to run a `free-tier` adapter when the tier is not free.
-- A shadow cost above $0.50 in a UTC day shows a persistent warning: "Usage exceeds what a free account allows; check provider billing."
+**Billing-enabled accounts are the main $0 risk.** If a payment method is added to the Groq organization or billing is enabled on the Gemini project, the same API key silently becomes paid (and Gemini's data terms change). The app cannot read billing state, so:
+- Local quotas come from the **published free-tier limits** checked into server code, never from the account's limits page. Metor therefore can't use more than a free account allows, even on a paid account.
+- Each Groq response's `x-ratelimit-limit-requests` header is logged, which shows which plan's limits the account actually has.
+- Not built: a "shadow cost" at paid prices and a refusal when the tier isn't free. With usage capped at free-tier levels these add visibility only; revisit if a paid-capable provider is ever considered.
 
 Startup checks, in order:
 
@@ -370,6 +376,8 @@ Target: **$0/month**. Defaults: simulated providers, `ALLOW_PAID_PROVIDERS=false
 ### 11.1 Spend accounting
 
 The daily cap must survive reconnects and server restarts, and it must cover **every** paid call: transcription, classification, answers, and summaries.
+
+**Built in Phase 3** (`server/src/limits/usageLedger.ts`): free-tier usage in requests and audio seconds, per provider, in one-minute buckets for 24 h, saved to `SPEND_LEDGER_PATH` (default `data/usage-ledger.json`). Each Groq call is charged `max(segment length, 10 s)` **before** it is sent and is never refunded, so crashes and timeouts can't undercount. The rows below on USD prices and reconciliation describe the design for when a provider with a price exists; with only free-tier providers, cost is always $0.
 
 | Aspect | Design |
 |---|---|

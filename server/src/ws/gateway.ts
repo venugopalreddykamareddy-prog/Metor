@@ -3,6 +3,7 @@ import type { WebSocket } from '@fastify/websocket';
 import { decodeAudioFrame, parseClientMessage, type ErrorCode } from '../../../shared/messages.ts';
 import { readSessionCookie } from '../auth/routes.ts';
 import type { AuthSessions } from '../auth/sessions.ts';
+import type { SttFactory } from '../stt/types.ts';
 import { send, type Recording, type Recordings } from './recording.ts';
 
 // Real-time audio is 10 frames/s. The burst allows resending a few seconds of buffered audio after a reconnect.
@@ -13,6 +14,8 @@ export interface GatewayOptions {
   allowedOrigins: ReadonlySet<string>;
   sessions: AuthSessions;
   recordings: Recordings;
+  /** Server-side transcription modes; `groq` is present only when GROQ_API_KEY is set. */
+  stt: { simulated: SttFactory; groq?: SttFactory };
 }
 
 function sendError(socket: WebSocket, code: ErrorCode, message: string, retryable = false): void {
@@ -83,12 +86,15 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
         }
         const msg = parsed.value;
         switch (msg.type) {
-          case 'session.start':
+          case 'session.start': {
+            const createStt = opts.stt[msg.mode];
+            if (!createStt) return sendError(socket, 'provider_unavailable', `${msg.mode} transcription is not configured`);
             if (recording) opts.recordings.remove(recording.id);
-            recording = opts.recordings.start(authId, socket);
-            request.log.info({ sessionId: recording.id }, 'recording started');
+            recording = opts.recordings.start(authId, socket, createStt);
+            request.log.info({ sessionId: recording.id, mode: msg.mode }, 'recording started');
             send(socket, { type: 'session.started', sessionId: recording.id });
             break;
+          }
           case 'session.resume':
             recording = opts.recordings.resume(authId, msg.sessionId, socket, msg.lastFinalSeq) ?? null;
             if (!recording) return sendError(socket, 'session_expired', 'recording session is gone');

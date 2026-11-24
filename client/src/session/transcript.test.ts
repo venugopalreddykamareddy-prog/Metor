@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTranscript, dropPartial, emptyTranscript } from './transcript.ts';
+import { applyTranscript, clearTranscript, dropPartial, emptyTranscript, transcriptText } from './transcript.ts';
 
 const env = { id: 'x', ts: 1 };
 const partial = (text: string) => ({ type: 'transcript.partial' as const, ...env, segmentId: 's', text });
@@ -33,5 +33,25 @@ describe('applyTranscript', () => {
     const t = dropPartial(applyTranscript(applyTranscript(emptyTranscript, final(1, 'a')), partial('b')));
     expect(t.partial).toBeNull();
     expect(t.lines).toHaveLength(1);
+  });
+
+  it('skips a final that repeats the previous one', () => {
+    let t = applyTranscript(emptyTranscript, final(1, 'Run kubectl get pods.'));
+    t = applyTranscript(t, final(2, 'run kubectl get pods'));
+    t = applyTranscript(t, final(3, 'Then check the logs.'));
+    expect(transcriptText(t)).toBe('Run kubectl get pods. Then check the logs.');
+    expect(t.lastFinalSeq).toBe(3);
+  });
+
+  it('treats an empty partial as no partial', () => {
+    const t = applyTranscript(applyTranscript(emptyTranscript, partial('…')), partial(''));
+    expect(t.partial).toBeNull();
+  });
+
+  it('clearTranscript empties lines but still ignores replayed finals', () => {
+    const cleared = clearTranscript(applyTranscript(emptyTranscript, final(1, 'a')));
+    expect(cleared.lines).toEqual([]);
+    expect(applyTranscript(cleared, final(1, 'a')).lines).toEqual([]);
+    expect(applyTranscript(cleared, final(2, 'b')).lines).toHaveLength(1);
   });
 });

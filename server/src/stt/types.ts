@@ -1,10 +1,14 @@
+import type { ErrorCode } from '../../../shared/messages.ts';
+
 /** Receives transcript events from a speech-to-text stream. */
 export interface TranscriptSink {
   partial(text: string): void;
-  final(text: string, startMs: number, endMs: number): void;
+  final(text: string, startMs: number, endMs: number, latencyMs?: number): void;
+  /** A problem the user should see; the stream keeps running. */
+  error(code: ErrorCode, message: string): void;
 }
 
-/** One live transcription stream. Phase 3 adds a Groq implementation behind the same shape. */
+/** One live transcription stream. */
 export interface SttStream {
   /** `atMs` is the frame's position on the session timeline (seq × frame length). */
   push(samples: Int16Array, atMs: number): void;

@@ -23,6 +23,8 @@ interface AuthRouteOptions {
   sessions: AuthSessions;
   sessionTtlMs: number;
   allowedOrigins: ReadonlySet<string>;
+  /** Reported by /api/me so the UI only offers configured transcription modes. */
+  providers: { groq: boolean };
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRouteOptions): Promise<void> {
@@ -82,5 +84,5 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRouteOp
     return reply.header('set-cookie', sessionCookie('', 0)).send({ authenticated: false });
   });
 
-  app.get('/api/me', { preHandler: requireSession }, async () => ({ authenticated: true }));
+  app.get('/api/me', { preHandler: requireSession }, async () => ({ authenticated: true, providers: opts.providers }));
 }

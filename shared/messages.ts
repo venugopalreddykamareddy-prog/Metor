@@ -19,13 +19,22 @@ const sessionId = z.uuid();
 
 // Client → server
 export const clientMessageSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('session.start'), ...envelope, mode: z.literal('simulated'), source: z.literal('mic') }),
+  // Web Speech runs in the browser, so only server-side transcription modes start a session here.
+  z.strictObject({ type: z.literal('session.start'), ...envelope, mode: z.enum(['simulated', 'groq']), source: z.literal('mic') }),
   z.strictObject({ type: z.literal('session.resume'), ...envelope, sessionId, lastFinalSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('session.stop'), ...envelope }),
 ]);
 
 // Server → client
-export const errorCodeSchema = z.enum(['bad_request', 'no_session', 'session_expired', 'rate_limited']);
+export const errorCodeSchema = z.enum([
+  'bad_request',
+  'no_session',
+  'session_expired',
+  'rate_limited',
+  'limit_reached',
+  'quota_exhausted',
+  'provider_unavailable',
+]);
 
 export const serverMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('session.started'), ...envelope, sessionId }),
@@ -48,6 +57,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     text: z.string(),
     startMs: z.number().min(0),
     endMs: z.number().min(0),
+    /** Time from the end of the audio segment to this final, when the provider measures it. */
+    latencyMs: z.number().min(0).optional(),
   }),
   z.strictObject({ type: z.literal('transcript.gap'), ...envelope, fromMs: z.number().min(0), toMs: z.number().min(0) }),
   z.strictObject({

@@ -174,17 +174,29 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 3 — Real-time transcription integration
+## Phase 3 — Real transcription 🔍 (in review, PR #5)
 
-**Objective:** Add free real transcription behind the same adapter: `GroqSTT` (server, per-utterance upload) and an evaluated `webspeech` client option. Simulated stays the default.
+**Objective:** Show the words actually spoken. Browser speech (Web Speech API) first, Groq Whisper free tier as the alternative, simulated kept for tests (ADR-011).
 
-**Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. The server refuses to start with any real provider unless `APP_PASSPHRASE_HASH` is set.
+**Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. ✅
 
-**Key tasks:** re-verify official docs for Groq (endpoint, models, formats, free-tier limits from the account limits page, data policy, ZDR) and Web Speech (browser support, `start(audioTrack)`, vendor data policy); implement the **spend + quota ledger (ARCHITECTURE §11.1) before the first real provider call**, including conservative reservations for unknown usage; implement `GroqSTT` (segment sizing per ARCHITECTURE §4.3 with a unit test of the hourly quota math, WAV header, ≥10 s accounting, rolling-window quotas, shadow cost, 429/`retry-after` → `quota_exhausted`); implement the `webspeech` client adapter behind login (mic, plus Chromium tab track if it works; restart on end; no `processLocally`); compare both on 3 test recordings (accuracy on technical terms, latency) and record results; decide ADR-005; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
+**Acceptance**
+- [x] Transcription mode selector: Simulated, Browser speech (when supported), Groq Whisper (only when `GROQ_API_KEY` is set). Disabled while recording (e2e)
+- [x] Browser speech runs on Metor's own mic track, restarts after silence, boosts technical phrases where supported, and stops and releases the mic on fatal errors (e2e with a fake `SpeechRecognition`)
+- [x] Groq: speech segments sized for the free-tier quota, WAV upload with vocabulary prompt, silence and Whisper hallucinations dropped, finals kept in order (unit tests with a fake Groq)
+- [x] Usage ledger charges each Groq call before sending, survives restarts, and refuses calls over the local free-tier limits; a 429 pauses uploads until `retry-after` with **no provider switch** (unit tests)
+- [x] `MAX_TRANSCRIPTION_MINUTES` stops a recording (integration test)
+- [x] Technical-term corrections on finals; duplicate finals dropped; empty partials cleared; partial finalized on pause/stop (unit tests)
+- [x] Transcript auto-scrolls unless the user scrolls up; Clear transcript button (e2e)
+- [x] Accuracy check panel: word error rate, technical-term recall, final latency p50 (unit + e2e)
+- [x] CI never calls Groq or a real speech service
+- [ ] **Measured on real speech:** word error rate and term recall for both modes, Groq end-of-segment → text p50 < 2.0 s. Needs the owner's voice, Chrome, and a Groq key; method and results table in `docs/STT_EVALUATION.md`.
+- [ ] **Real services exercised:** Browser speech in Chrome and a live Groq request haven't been run from here (no mic, no key). The owner checks them when running the evaluation.
+- [ ] ADR-005: Groq stays behind the server relay (the key never reaches the browser). Whether Groq offers ephemeral client tokens wasn't checked; not needed while relaying.
 
-**Acceptance:** Groq end-of-utterance → final p50 < 2.0 s and Web Speech partial p50 < 1.0 s, measured in the debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test), keeps reservations when usage is unknown (test), and refuses calls over local quota or a non-zero spend limit; mocked provider 429 → feature pauses with reset time and **no provider switch** (test); upstream calls stop on disconnect and on logout; Web Speech unavailable until logged in (test); provider data policies re-verified in SECURITY_PRIVACY §2.2. CI never calls a real provider.
+**Not in this phase:** tab or system audio capture (FR-A7), speaker separation.
 
-**Risks:** free-tier limits or models change; Groq per-utterance latency; Web Speech behavior differs by browser and may not accept display-capture tracks.
+**Notes:** On disconnect, the segment being collected is dropped; an upload already in flight finishes and its final is replayed on resume. On logout, in-flight results are discarded.
 
 ---
 
@@ -241,6 +253,24 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 **Objective:** Full E2E regression suite (extending the smoke tests from Phases 1–2), deployment of the server to a lightweight host with authentication, versioned release with CHANGELOG.
 
 **Key tasks:** choose host (ADR); auth for the deployed server; release workflow; user guide.
+
+---
+
+## Phase 10 — Camera access and preview (planned)
+
+**Objective:** Optional camera with the same consent rules as the mic: explicit start, a visible camera indicator, a local preview only, nothing recorded or uploaded by default. FR-V1.
+
+---
+
+## Phase 11 — Presence coaching (planned)
+
+**Objective:** Feedback on eye contact, head position, posture, and lighting while practicing. It should run in the browser on the preview frames without storing video; choose the approach in an ADR (it must respect the no-local-heavy-models rule). FR-V2.
+
+---
+
+## Phase 12 — Disclosed gaze correction and virtual camera (planned)
+
+**Objective:** Optional gaze correction and a virtual camera output, for practice or where everyone has agreed. Always visible as such to other participants, consistent with SECURITY_PRIVACY §1 (no concealment). A virtual camera needs an OS-level component on the Mac, which conflicts with the current no-local-install rule; it needs its own ADR before any work starts. FR-V3.
 
 ---
 

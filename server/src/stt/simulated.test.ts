@@ -11,6 +11,7 @@ function setup() {
       events.push(`final:${text}`);
       finals.push({ text, startMs, endMs });
     },
+    error: () => {},
   });
   let seq = 0;
   const pushMs = (ms: number) => {

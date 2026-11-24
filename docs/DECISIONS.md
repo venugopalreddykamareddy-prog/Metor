@@ -110,7 +110,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Decision:**
 
-1. **Provider adapters, selected by config.** `STT_PROVIDER` = `simulated` | `groq` | `webspeech`. `ANSWER_PROVIDER` = `simulated` | `groq` | `gemini`. Both default to `simulated`. No provider is required; OpenAI is not required.
+1. **Provider adapters, selected by config.** `STT_PROVIDER` = `simulated` | `groq` | `webspeech` (changed in ADR-011: the transcription mode is now picked per recording in the UI). `ANSWER_PROVIDER` = `simulated` | `groq` | `gemini`. Both default to `simulated`. No provider is required; OpenAI is not required.
 2. **Simulated first.** `SimulatedSTT` (Phase 2) and `SimulatedAnswer` (Phase 4) are full adapters used for development, CI, and demos.
 3. **Groq free tier is the default real provider** for transcription (Whisper models) and answers (chat models), subject to Phase 3/4 evaluation.
 4. **Browser Web Speech API is evaluated** as a zero-key transcription option, with documented browser and audio-source limits. On-device mode (`processLocally`) is **not** used, because it downloads a language pack to the local machine.
@@ -159,4 +159,22 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 - **Playwright:** Chromium **headless shell only** (`--only-shell`, ~280 MB), not full Chromium (~410 MB more).
 
 **Consequences:** Two fewer runtime tools to install and update. Server code cannot use enums, namespaces or parameter properties. TypeScript stays one major version behind until lint tooling catches up.
+
+---
+
+## ADR-011: Real transcription — Web Speech first, Groq as the alternative
+
+**Status:** Accepted · 2026-11-24 (Phase 3)
+
+**Context:** Phase 3 replaces canned text with the words actually spoken, at $0 and without local models. ADR-009 put the provider choice in an env var, but trying both engines against each other is easier from the UI.
+
+**Decision:**
+
+- **Mode per recording, in the UI:** Simulated (always), Browser speech (when the browser has `SpeechRecognition`), Groq Whisper (when `GROQ_API_KEY` is set). The last choice is remembered in `localStorage`. `STT_PROVIDER` is gone.
+- **Browser speech is the default real mode:** no key, words appear while speaking. It runs entirely in the browser on Metor's own mic track, so the Metor server never receives the audio. In Chrome/Edge the audio goes to Google/Microsoft; the consent dialog says so.
+- **Groq Whisper as the alternative:** it sees whole sentences plus a vocabulary prompt, but text arrives in segments a few seconds after a pause. Segments are sized for the free-tier quota (ARCHITECTURE §4.3), and usage is charged to a file-backed ledger before each call.
+- **Technical vocabulary in three places** (`shared/vocabulary.ts`): a spelling prompt for Whisper, boosted phrases for Web Speech where supported, and a small set of corrections for common mishearings (e.g. "cube cuddle" → kubectl, "a k s" → AKS) applied to finals of both. Corrections match whole words only and are tested against ordinary sentences.
+- **Measuring accuracy in the app:** an Accuracy check panel scores the transcript against a read-aloud script (word error rate, technical-term recall, final latency p50). Results go in `docs/STT_EVALUATION.md`; no numbers are recorded until real runs exist.
+
+**Consequences:** No new dependencies. Web Speech can't be tested headlessly, so Playwright drives a fake `SpeechRecognition`. Real accuracy depends on the user's voice and mic, so the comparison needs a manual run. Groq is never called in CI.
 

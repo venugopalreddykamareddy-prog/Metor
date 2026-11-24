@@ -97,6 +97,14 @@ Answers should sound conversational (a brief natural opener, plain sentences, na
 - Window is **visible to screen capture** like any normal window (no content-protection/hiding flags).
 - Authorized system audio capture per OS capabilities.
 
+### 2.9 Video (Phases 10–12, planned)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-V1 | Camera access with explicit consent, a visible camera indicator, and a local preview | P2 (Phase 10) |
+| FR-V2 | Coaching on eye contact, head position, posture, and lighting, computed without storing video | P2 (Phase 11) |
+| FR-V3 | Optional gaze correction and virtual-camera output, always disclosed to other participants and only where allowed | P2 (Phase 12) |
+
 ## 3. Technical coverage (prompt and question-bank scope)
 
 **SRE / DevOps / Platform / Cloud:** SLIs, SLOs, SLAs, error budgets · incident management, RCA, on-call · Linux troubleshooting · Kubernetes, AKS, EKS, Docker concepts, Helm, ArgoCD · AWS, Azure (Front Door, Key Vault, Cosmos DB, Functions) · Datadog, Prometheus, Grafana, Splunk, OpenTelemetry · Terraform, Ansible · Azure DevOps, Jenkins, GitHub Actions, Octopus Deploy · Python, Bash · distributed systems, microservices, system design, HA, DR · payment platform reliability, PCI-compliant releases · TLS/SSL certificates · load balancing · automated remediation.

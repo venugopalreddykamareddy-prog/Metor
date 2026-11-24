@@ -6,6 +6,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 3 (PR #5): real transcription. Mode selector with Simulated, Browser speech (Web Speech API on Metor's own mic track, restarts after silence, phrase boosting where supported), and Groq Whisper (free tier, offered only when `GROQ_API_KEY` is set).
+- Groq segments sized for the free-tier quota (voice detection with an adaptive noise floor, ≥ 8 s or a 1.5 s pause up to twice a minute, 30 s cap), WAV upload with a vocabulary prompt, and filtering of silence and Whisper hallucinations. A 429 pauses uploads until the reset time; no paid fallback.
+- File-backed usage ledger: requests and audio seconds per minute for 24 h, charged before each Groq call, capped at 80% of the published free-tier limits.
+- Technical vocabulary (`shared/vocabulary.ts`): Whisper prompt, Web Speech phrases, and corrections of common mishearings on final text.
+- Transcript: duplicate finals dropped, auto-scroll, Clear transcript button, final-latency p50 in the debug line.
+- Accuracy check panel (word error rate, technical-term recall, latency) and `docs/STT_EVALUATION.md`.
+- `MAX_TRANSCRIPTION_MINUTES` is enforced. `/api/me` reports which providers are configured.
+- Roadmap: Phases 10–12 (camera preview, presence coaching, disclosed gaze correction). No video code.
 - Phase 2 (PR #4): passphrase login (scrypt, HttpOnly SameSite=Strict cookie, 12 h expiry, 5-attempt lockout, Origin check on writes); `pnpm hash-passphrase`; server refuses to start without a passphrase hash or with non-simulated providers.
 - Mic recording with a consent dialog, recording indicator and timer, and Start / Pause / Resume / Stop. An AudioWorklet downsamples to 16 kHz PCM16 and sends 100 ms frames with sequence numbers.
 - Simulated transcription (canned lines at speaking pace) with partials, finals, and gap markers.
@@ -29,4 +37,5 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Groq audio segments are at least 8 s so the 10 s minimum per request doesn't exhaust the hourly quota.
 - Split answer latency into NFR-2 (from final transcript) and NFR-2b (end to end, per provider).
 - README: Metor as the project name, current status and what works, constraints, AI-assisted development note.
+- `STT_PROVIDER` removed: the transcription mode is chosen per recording in the UI (ADR-011).
 - Phase 1 echo protocol removed; the WebSocket client gives up after 6 reconnect attempts (about 24 s, inside the server's 30 s resume window) and shows a Reconnect button.
