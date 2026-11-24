@@ -10,7 +10,7 @@ Metor is a personal project: a browser app that will transcribe speech, spot que
 | 1. Web foundation | Done (PR #2) |
 | 2. Login, mic capture, simulated transcription | Done (PR #4) |
 | 3. Real transcription: Browser speech and Groq Whisper | In review (PR #5) |
-| 4. Question understanding and answers: validate the question first (false premises, made-up terms, mishearings), one request per question | Planned |
+| 4. Question extraction and answers: split questions out of continuous speech, validate them (false premises, made-up terms, mishearings), stream answers from Groq's free tier, one request per question | Planned |
 | 5–9. Resume grounding and experience checks, practice mode, desktop app, hardening, release | Planned |
 | 10–12. Camera preview, presence coaching, disclosed gaze correction | Planned (no video work yet) |
 

@@ -42,7 +42,21 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
 | FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 
-### 2.2a Understanding and validating the question (Phases 4–5)
+### 2.2a Question extraction (Phase 4)
+
+Testing Phase 3 showed that several questions spoken without a pause end up in one long clean paragraph. Phase 4 adds a third layer: **raw transcript → clean transcript → extracted questions**. Each layer is kept separately, and only extracted questions are answered.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-E1 | Find several questions in one continuous stretch of speech, even without punctuation | P0 |
+| FR-E2 | Classify each part as greeting/small talk, filler, statement/context, request ("walk me through…"), or question, and answer only requests and questions | P0 |
+| FR-E3 | Handle compound questions ("what is X and how does it differ from Y"), interruptions, and follow-ups that depend on earlier context | P0 |
+| FR-E4 | Keep the speaker's wording and technical terms; extraction may cut and trim, but never paraphrase or invent | P0 |
+| FR-E5 | A pause alone doesn't complete a question: wait while the sentence is open, ends on a dangling word, or more speech follows quickly | P0 |
+| FR-E6 | One answer per question: partial transcripts, repeated phrases, and recognizer repeats never trigger a second answer; a question that grows ("what is BGP… and how does it pick a path") updates the pending one | P0 |
+| FR-E7 | Show extracted questions as their own list, linked to the clean sentences they came from; the user can merge, split, dismiss, or answer one manually | P0 |
+
+### 2.2b Understanding and validating the question (Phases 4–5)
 
 Before answering, Metor works out what kind of question it is and whether it rests on something true. The goal is the judgment of an experienced engineer: answer real questions directly, push back on false premises politely, and say "I don't know that one" instead of inventing.
 
@@ -57,8 +71,9 @@ Before answering, Metor works out what kind of question it is and whether it res
 | FR-U7 | Experience probes are answered only from verified KB items; otherwise correct the premise without claiming the experience | P0 (general) / P1 (with KB, Phase 5) |
 | FR-U8 | Show a short **assessment** separately from the suggested answer when something is off. Labels: incorrect premise, unrecognized term, possible transcription error, clarification needed, unrealistic requirement, insufficient information, unverified experience, off-topic. No assessment for ordinary questions; difficulty or unusual-but-real technology is not a reason to flag | P0 |
 | FR-U9 | Say so when something can't be verified. Never claim a check against documentation happened unless it did. Verifying against official docs is optional and only from sources Metor actually has (e.g. curated notes in the KB, Phase 5) | P0 |
+| FR-U10 | Tell speech-recognition mistakes apart from real but unfamiliar technology: a near match to a known term in a technical context is a likely mishearing (offer the correction); a well-formed name with no near match is unfamiliar (say so, ask) | P0 |
 
-### 2.2b Conversation awareness (Phase 4)
+### 2.2c Conversation awareness (Phase 4)
 
 | ID | Requirement | Priority |
 |---|---|---|
@@ -94,6 +109,8 @@ Before answering, Metor works out what kind of question it is and whether it res
 | FR-P3 | Free-tier quota exhaustion pauses the feature with a clear message and reset time; **never** falls back automatically to a paid provider | P0 |
 | FR-P4 | Authentication required before any real cloud API, free or paid, including Web Speech | P0 |
 | FR-P5 | UI shows the active provider, remaining local quota, and whether data leaves the device | P0 |
+| FR-P6 | Groq free tier is the default streaming answer provider (Phase 4) | P0 |
+| FR-P7 | Claude and OpenAI are optional adapters, off by default, using only official API-key authentication. No unofficial login, no reuse of consumer subscription sessions, no working around rate or subscription limits. Enabling one needs the owner's explicit choice and an ADR (ADR-013) | P1 |
 
 ### 2.5 Knowledge base
 

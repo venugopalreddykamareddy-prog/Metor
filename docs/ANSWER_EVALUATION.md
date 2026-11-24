@@ -20,6 +20,8 @@ How suggested answers will be checked once Phase 4 exists. The questions are in 
 | follow_up | 8 | Continuations, a correction ("I meant mutual TLS"), a topic switch, three questions at once |
 | behavioral | 10 | STAR from verified stories, or an honest "no matching story" plus a labeled hypothetical |
 
+Question extraction has its own fixture, `eval/question-extraction.json`: 22 stretches of continuous, unpunctuated speech with the questions to extract, word for word (ARCHITECTURE §5.2). It is a unit-test fixture rather than an LLM evaluation, because extraction is local and rule-based.
+
 ## Metrics
 
 | Metric | How it's measured | Target |

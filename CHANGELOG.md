@@ -16,6 +16,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Raw and clean transcripts (ADR-012): raw recognizer output kept as heard; a local clean view merges fragments into sentences by pause length, keeps question boundaries, removes fillers and stutters, fixes known terms with context for ambiguous phrases, and adds capitals and punctuation.
 - User corrections: "heard as → should be" rules remembered in the browser, plus per-sentence edits. The accuracy check scores raw and clean text.
 - Phase 4/5 roadmap: question understanding and validation (FR-U1–U9), conversation awareness (FR-C1–C4), answer style (FR-Q10), one request per question with a structured assessment header, and `eval/answer-questions.json` (110 questions) with docs/ANSWER_EVALUATION.md.
+- Phase 4 question extraction requirements (FR-E1–E7), ARCHITECTURE §5.2 design, and `eval/question-extraction.json` (22 cases, questions kept word for word). FR-U10: telling mishearings apart from unfamiliar technology.
+- ADR-013: answer providers. Groq free tier is the default; Claude (API key, billed) and OpenAI (separate API billing; ChatGPT Pro/Business credits possible) are optional, off by default, official API keys only.
 - Roadmap: Phases 10–12 (camera preview, presence coaching, disclosed gaze correction). No video code.
 - Phase 2 (PR #4): passphrase login (scrypt, HttpOnly SameSite=Strict cookie, 12 h expiry, 5-attempt lockout, Origin check on writes); `pnpm hash-passphrase`; server refuses to start without a passphrase hash or with non-simulated providers.
 - Mic recording with a consent dialog, recording indicator and timer, and Start / Pause / Resume / Stop. An AudioWorklet downsamples to 16 kHz PCM16 and sends 100 ms frames with sequence numbers.

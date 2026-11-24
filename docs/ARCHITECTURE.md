@@ -170,14 +170,47 @@ flowchart TD
   N[New question arrives] -. cancel .-> L
 ```
 
-### 5.2 Question detection heuristics (client, free, fast)
+### 5.2 Question extraction (Phase 4)
 
-- Ends with `?` (when the STT returns punctuation).
-- Starts with interrogatives: what, why, how, when, where, which, who, can/could/would you, tell me about, walk me through, explain, describe, have you ever.
-- Imperative prompts common in interviews: "Give me an example of…", "Talk about…".
-- Debounce ~600–800 ms of silence after the final segment before triggering, to avoid answering half-asked questions.
-- De-dup: normalize (lowercase, strip fillers/punctuation) → compare against the last 10 questions with token-overlap similarity; skip if > 0.8.
-- Input is the **clean** transcript (§4.5): its sentence boundaries and `?` marks are the first signal. The raw text is kept for misheard-term checks.
+Three layers, each kept separately: **raw** fragments (as heard) → **clean** sentences (§4.5) → **extracted questions**. Only extracted questions are answered. Extraction is local, rule-based, and free: it cuts and trims the clean text, but never rewrites it (FR-E4).
+
+**Parts.** Each clean sentence is split into parts at boundary cues, and each part gets a kind:
+
+| Kind | Examples | Answered? |
+|---|---|---|
+| greeting / small talk | "hi, thanks for joining", "can you hear me", "let me share my screen" | no |
+| filler | "okay", "right", "so yeah", "mm" | no |
+| statement / context | "we run payments on AKS", "the cluster has 40 nodes" | no; attached to the next question as context |
+| request | "walk me through…", "tell me about…", "explain…", "describe…", "give me an example of…" | yes |
+| question | interrogative opening or `?` | yes |
+
+**Boundary cues when punctuation is missing** (FR-E1). One continuous clean sentence like "how does BGP pick a path what about OSPF and how would you troubleshoot a flapping session" should give three questions. Cues, in order of strength:
+1. A `?` or `.` from the recognizer or the clean view.
+2. A new interrogative or request opener after a complete clause: "… pick a path **what about** …", "… session **how would you** …".
+3. Explicit enumerators: "first…", "second question…", "also…", "and another thing…".
+4. "and" + interrogative ("…and how does it…"). This splits only if the part before is already a complete question. Otherwise it's a compound question and stays whole.
+
+**Compound questions** (FR-E3). "What is an SLI and how is it different from an SLO" is one question with two parts; it isn't split, because the second part depends on the first. "What is an SLI. How do you alert on burn rate" is two.
+
+**When a question is complete** (FR-E5). A pause alone doesn't count. A question is ready to answer when all of these hold:
+- the clean sentence is closed (no partial showing);
+- it doesn't end on a dangling word ("because", "the", "and");
+- no new speech started within the debounce (default 900 ms, tuned on real recordings);
+- or it ends with `?` from the recognizer.
+
+The user can always press **Answer this**.
+
+**No duplicate answers** (FR-E6).
+- Each extracted question has an id from its source sentence keys.
+- If an answered question grows, the new text replaces the pending one and doesn't create a second question.
+- A normalized question within 0.8 token overlap of one of the last 10 is skipped.
+- Recognizer repeats are already dropped by the clean view.
+
+**Context and follow-ups.** Statements just before a question, and the previous question and answer, travel with it as context. Short follow-ups ("and if the local preference is equal?") are marked as follow-ups rather than standalone questions.
+
+**UI** (FR-E7): an "Extracted questions" list beside the transcript. Each item links to its clean sentences and can be answered, dismissed, merged with the previous item, or split at a word.
+
+**Testing:** `eval/question-extraction.json` holds raw transcripts with the expected parts and questions. It's a unit-test fixture in Phase 4.
 
 ### 5.3 Prompt structure
 
@@ -213,10 +246,10 @@ Implements FR-U1–FR-U9 and FR-C1–FR-C4.
 |---|---|
 | Greeting, small talk, logistics | Short phrase list ("can you hear me", "let me share my screen", "how was your weekend") → no answer card |
 | Unfinished sentence | The clean view's last sentence is still open, or it ends with "…" → wait |
-| Several questions | Split on `?` boundaries in one clean sentence group; answer in order |
+| Several questions, statements, small talk | Question extraction (§5.2) |
 | Duplicate | Same normalized question as one of the last 10 → skip (FR-Q3) |
 | Unknown terms | Technical-looking tokens (acronyms, CamelCase, "the X command/protocol/tool") not in the local glossary (`shared/vocabulary.ts` plus a larger list of real technologies and the user's own "internal tools" list in Phase 5) → passed as a **hint** "not in Metor's glossary", never as a verdict |
-| Possible mishearing | A term the clean view corrected, or close to a glossary term → hint with both raw and corrected text |
+| Possible mishearing vs unfamiliar (FR-U10) | Likely mishearing: the clean view corrected it, or it is within edit distance 2 (or the same consonant skeleton) of a glossary term in a technical sentence, e.g. "cube let" ≈ kubelet. Hint with raw and suggested text. Unfamiliar: a well-formed name with no near match ("Shipyard", "Kubeflux"). Hint "not in glossary"; the answer says so and asks |
 
 **One LLM request** returns a short header and then the answer, so validation adds no extra call:
 
@@ -280,6 +313,18 @@ Startup checks, in order:
 2. A `paid` adapter requires `ALLOW_PAID_PROVIDERS=true`. With it `false`, `DAILY_SPEND_LIMIT_USD` must be `0`.
 3. A selected provider requires its key and model ID, or the server refuses to start (no silent fallback).
 4. `gemini` requires `GEMINI_FREE_TIER_DATA_ACK=true`, which acknowledges both the data terms and the region rule (the free tier must not serve end users in the EEA, Switzerland, or the UK). KB/resume content is stripped before calling it and live meeting/interview modes are refused (Google's unpaid terms forbid personal data).
+
+**Answer providers (Phase 4, ADR-013).** Checked against official docs on 2026-11-24:
+
+| Option | How it authenticates | Cost to Metor | Decision |
+|---|---|---|---|
+| **Groq free tier** (`openai/gpt-oss-120b` for answers, `openai/gpt-oss-20b` for cheap work; listed at 30 RPM, 1K requests/day, 8K tokens/min, 200K tokens/day on the Developer-plan table) | API key, no payment method | $0 within free limits | **Default** streaming answer provider |
+| **Claude API** (Client SDK, Messages API with streaming) | Claude Console API key | Billed per token | Optional paid adapter, off by default (`ALLOW_PAID_PROVIDERS=false`). Enable only by owner choice and ADR |
+| **Claude Agent SDK** | API key (or Bedrock/Vertex). Its docs say that, unless previously approved, third-party developers may not offer claude.ai login or rate limits in products built on it | Billed per token | Not used. It runs Claude Code's agent loop with file and command tools, which a streaming answer doesn't need; the Client SDK is the right fit if Claude is ever enabled |
+| **OpenAI API** | API key for an API organization | Billed separately from ChatGPT. ChatGPT Pro and eligible Business plans can claim monthly API credits for a linked API org; Plus doesn't qualify. After the credits, purchased credits are used, or requests fail with HTTP 429 `credit_balance_exhausted` | Optional adapter, off by default. Could be $0 only if the owner has an eligible plan **and** the API org has no purchased credits or auto-recharge; verify both before enabling |
+| Consumer subscriptions (claude.ai, ChatGPT web/app login) | — | — | **Never** used: no unofficial login, session reuse, or scraping |
+
+Metor can't see the owner's subscriptions; the owner checks eligibility and billing settings. Any adapter that can incur charges counts as `paid` for the startup checks.
 
 **Quota exhaustion** (provider 429 / `RESOURCE_EXHAUSTED`, or the local quota in §11.1 reached): stop that feature, emit `limit.reached { kind: "free_quota", provider, resetAt? }`, keep the transcript, and show "Free quota reached — resets at …; switch to Simulated or another free provider." Honor `retry-after`. **Never switch providers automatically**, and never to a paid one.
 

@@ -11,6 +11,7 @@ Follow [AGENTS.md](../AGENTS.md). It has the full rules; this is a short reminde
 - Never send resume/KB content to the Gemini free tier.
 - Keep raw transcripts as heard; cleanup only builds the clean view, with term fixes from explicit lists.
 - Answers: validate before answering, never invent terms, commands or experience, say when unsure, one LLM request per question.
+- Providers: official API keys only; never consumer logins or limit workarounds. Groq is the default; Claude/OpenAI are off by default.
 - Install and build only in Codespaces or GitHub Actions; no local AI models; minimal dependencies.
 - Audio capture requires an explicit user action and a visible indicator.
 - Add tests and a CHANGELOG entry with every change.

@@ -1,0 +1,370 @@
+{
+  "version": 1,
+  "description": "Phase 4 question extraction fixture: raw continuous speech (lowercase, no punctuation) and the questions to extract. See ARCHITECTURE §5.2.",
+  "cases": [
+    {
+      "id": "ext-01",
+      "input": "hi thanks for joining can you hear me okay great so how does bgp choose the best path",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does bgp choose the best path",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "hi thanks for joining",
+            "kind": "greeting"
+          },
+          {
+            "text": "can you hear me okay",
+            "kind": "greeting"
+          },
+          {
+            "text": "great so",
+            "kind": "filler"
+          }
+        ]
+      },
+      "note": "Greeting, audio check and filler come before the real question."
+    },
+    {
+      "id": "ext-02",
+      "input": "how does bgp pick a path what about ospf and how would you troubleshoot a flapping session",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does bgp pick a path",
+            "kind": "question"
+          },
+          {
+            "text": "what about ospf",
+            "kind": "question"
+          },
+          {
+            "text": "how would you troubleshoot a flapping session",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Three questions with no punctuation."
+    },
+    {
+      "id": "ext-03",
+      "input": "what is an sli and how is it different from an slo",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is an sli and how is it different from an slo",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Compound question: the second part depends on the first, so it stays whole."
+    },
+    {
+      "id": "ext-04",
+      "input": "we run payments on aks with about forty nodes how would you plan the upgrade",
+      "expected": {
+        "questions": [
+          {
+            "text": "how would you plan the upgrade",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "we run payments on aks with about forty nodes",
+            "kind": "statement"
+          }
+        ]
+      },
+      "note": "Statement is context for the question."
+    },
+    {
+      "id": "ext-05",
+      "input": "tell me about a time you handled an outage",
+      "expected": {
+        "questions": [
+          {
+            "text": "tell me about a time you handled an outage",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "Request, not an interrogative."
+    },
+    {
+      "id": "ext-06",
+      "input": "so um yeah okay",
+      "expected": {
+        "questions": [],
+        "ignored": [
+          {
+            "text": "so um yeah okay",
+            "kind": "filler"
+          }
+        ]
+      },
+      "note": "Only filler: nothing to answer."
+    },
+    {
+      "id": "ext-07",
+      "input": "what is an error budget how do you alert on burn rate",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is an error budget",
+            "kind": "question"
+          },
+          {
+            "text": "how do you alert on burn rate",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Two separate questions."
+    },
+    {
+      "id": "ext-08",
+      "input": "first what is a readiness probe second when would you use a startup probe",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is a readiness probe",
+            "kind": "question"
+          },
+          {
+            "text": "when would you use a startup probe",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Enumerators mark the boundary."
+    },
+    {
+      "id": "ext-09",
+      "input": "how would you design the ledger for",
+      "expected": {
+        "questions": [],
+        "incomplete": true
+      },
+      "note": "Ends on a dangling word: wait, don't answer."
+    },
+    {
+      "id": "ext-10",
+      "input": "explain the tls handshake and also how mutual tls differs",
+      "expected": {
+        "questions": [
+          {
+            "text": "explain the tls handshake",
+            "kind": "request"
+          },
+          {
+            "text": "how mutual tls differs",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "'and also' introduces a second ask."
+    },
+    {
+      "id": "ext-11",
+      "input": "can you walk me through kubectl rollout undo actually wait let me rephrase how do you roll back a helm release",
+      "expected": {
+        "questions": [
+          {
+            "text": "how do you roll back a helm release",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "can you walk me through kubectl rollout undo",
+            "kind": "abandoned"
+          }
+        ]
+      },
+      "note": "Interviewer corrects themselves; the first question is dropped."
+    },
+    {
+      "id": "ext-12",
+      "input": "what happens when you type a url and press enter",
+      "expected": {
+        "questions": [
+          {
+            "text": "what happens when you type a url and press enter",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "'when' inside the question is not a boundary."
+    },
+    {
+      "id": "ext-13",
+      "input": "do you know what a pod disruption budget is",
+      "expected": {
+        "questions": [
+          {
+            "text": "do you know what a pod disruption budget is",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Embedded 'what' is not a boundary."
+    },
+    {
+      "id": "ext-14",
+      "input": "i was reading about cilium which uses ebpf how does it replace kube proxy",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does it replace kube proxy",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "i was reading about cilium which uses ebpf",
+            "kind": "statement"
+          }
+        ]
+      },
+      "note": "Statement gives context; 'it' refers to Cilium."
+    },
+    {
+      "id": "ext-15",
+      "input": "how does dns resolution work how does dns resolution work",
+      "expected": {
+        "questions": [
+          {
+            "text": "how does dns resolution work",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Repeated question gets one answer."
+    },
+    {
+      "id": "ext-16",
+      "input": "why would a pod be pending and what would you check first",
+      "expected": {
+        "questions": [
+          {
+            "text": "why would a pod be pending and what would you check first",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Compound: the second part depends on the first."
+    },
+    {
+      "id": "ext-17",
+      "input": "let me share my screen okay can you see it so here is the architecture diagram where would you add a cache",
+      "expected": {
+        "questions": [
+          {
+            "text": "where would you add a cache",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "let me share my screen",
+            "kind": "greeting"
+          },
+          {
+            "text": "okay can you see it",
+            "kind": "greeting"
+          },
+          {
+            "text": "so here is the architecture diagram",
+            "kind": "statement"
+          }
+        ]
+      },
+      "note": "Logistics and context before the question."
+    },
+    {
+      "id": "ext-18",
+      "input": "and if the local preference is equal",
+      "expected": {
+        "questions": [
+          {
+            "text": "and if the local preference is equal",
+            "kind": "follow_up"
+          }
+        ]
+      },
+      "note": "Follow-up without an interrogative opener.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How does BGP choose the best path?"
+        }
+      ]
+    },
+    {
+      "id": "ext-19",
+      "input": "give me an example of an slo you defined",
+      "expected": {
+        "questions": [
+          {
+            "text": "give me an example of an slo you defined",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "Experience request (Phase 5 checks it against the KB)."
+    },
+    {
+      "id": "ext-20",
+      "input": "how do you secure secrets in kubernetes is etcd encrypted by default",
+      "expected": {
+        "questions": [
+          {
+            "text": "how do you secure secrets in kubernetes",
+            "kind": "question"
+          },
+          {
+            "text": "is etcd encrypted by default",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Auxiliary-verb opener 'is' after a complete question starts a new one."
+    },
+    {
+      "id": "ext-21",
+      "input": "what is the difference between tcp and udp when would you choose udp",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is the difference between tcp and udp",
+            "kind": "question"
+          },
+          {
+            "text": "when would you choose udp",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "'when would you' after a complete question is a new question."
+    },
+    {
+      "id": "ext-22",
+      "input": "okay that makes sense thanks",
+      "expected": {
+        "questions": [],
+        "ignored": [
+          {
+            "text": "okay that makes sense thanks",
+            "kind": "filler"
+          }
+        ]
+      },
+      "note": "Acknowledgement, not a question."
+    }
+  ]
+}

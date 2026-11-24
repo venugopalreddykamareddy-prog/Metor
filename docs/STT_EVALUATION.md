@@ -27,6 +27,7 @@ Only the owner's first manual check so far; the accuracy script hasn't been run.
 | Date | Mode | Browser / mic | WER raw | WER clean | Terms raw | Terms clean | Final latency p50 | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-11-24 | Browser speech | Chrome / owner's mic | — | — | — | — | 0.45 s (n=6) | Owner's first manual test: recognition works; fragmented, no capitals or punctuation. Accuracy script not run yet. |
+| 2026-11-24 | Browser speech (clean view) | Chrome / owner's mic | — | — | — | — | 0.44 s (n=6) | Sentence merging and term recognition improved; several questions spoken in a row merge into one paragraph (to be handled by Phase 4 question extraction). Accuracy script not run yet. |
 | | Groq Whisper | | | | | | | |
 
 ## Known behaviour to watch for

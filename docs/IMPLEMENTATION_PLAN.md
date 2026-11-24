@@ -206,14 +206,14 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ## Phase 4 — Question understanding and streaming answers
 
-**Objective:** Detect questions in the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.4).
+**Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
 **Entry gate:** Phase 3 merged, and Browser speech measured on the accuracy script (docs/STT_EVALUATION.md).
 
 **Key tasks**
-- Question detection on clean sentences (boundaries and `?`), silence debounce, manual "Answer this", de-dup.
-- Local pre-checks: greetings, small talk and logistics; unfinished sentences; multiple questions; unknown-term and possible-mishearing hints (§5.4).
-- `SimulatedAnswer` adapter first (streams a valid header plus a canned answer, for UI and CI); then `GroqAnswer` (re-verify model IDs and free-tier limits); optional `GeminiAnswer` (no KB content, not in live modes).
+- **Question extraction** (§5.2, FR-E1–E7): split clean sentences into greeting / filler / statement / request / question parts using boundary cues that don't need punctuation; keep compound questions whole; drop abandoned questions after "let me rephrase"; completion rules beyond pauses (closed sentence, no dangling word, debounce); one answer per question, with growing questions updating the pending one; "Extracted questions" list with answer, dismiss, merge, and split.
+- Local pre-checks: unknown-term and possible-mishearing hints, telling mishearings apart from unfamiliar names (§5.4, FR-U10).
+- `SimulatedAnswer` adapter first (streams a valid header plus a canned answer, for UI and CI); then **`GroqAnswer` as the default** (`openai/gpt-oss-120b`; re-verify model IDs and free-tier limits); optional `GeminiAnswer` (no KB content, not in live modes). Claude and OpenAI adapters are **not** built in this phase (ADR-013): official API keys only, off by default, and only after the owner opts in and checks billing.
 - One request returning the `TYPE / ASSESSMENT / NOTE / CLARIFY / ANSWER` header plus the streamed answer; the client parses it and shows the assessment chip separately; a malformed header falls back to plain answer text.
 - Prompt rules for validation, uncertainty, natural style, and lengths (§5.3–5.4, FR-Q10). No first-person experience without a verified KB (FR-Q8).
 - Conversation context: last turns plus a rolling summary; follow-ups, corrections, and topic switches.
@@ -222,6 +222,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Acceptance**
 - 0 duplicate requests in the test script; never more than one LLM request per detected question.
+- Extraction fixture (`eval/question-extraction.json`, 22 cases): the right questions, word for word, in ≥ 20 of 22 cases; no answer for the filler-only and incomplete cases (unit tests).
 - `irrelevant` items produce no answer card (≥ 7 of 8); several questions at once are split.
 - Final transcript → first token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b recorded per transcription mode.
 - On the 110-question set with the free-tier provider: assessment accuracy ≥ 85%, false-positive flags ≤ 5%, **0 hallucinations** on fabricated terms and experience traps, factual accuracy ≥ 1.7/2, naturalness ≥ 4/5 (docs/ANSWER_EVALUATION.md).

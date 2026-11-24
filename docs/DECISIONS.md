@@ -192,3 +192,24 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No added latency or cost, and every rule is unit-tested. Rules can't fix grammar or deeper mistakes, and pause thresholds are guesses until real recordings tune them. Phase 4 must read the clean view, but it can show the raw text when a question looks misheard.
 
+---
+
+## ADR-013: Answer providers — Groq by default; Claude and OpenAI only through official API keys
+
+**Status:** Accepted · 2026-11-24 (Phase 3 review, for Phase 4). Facts checked against official docs that day.
+
+**Context:** Phase 4 needs a streaming answer model at $0. The owner asked to evaluate the Claude Agent SDK and OpenAI, and whether existing subscriptions can be used.
+
+**Findings:**
+- **Groq free tier** offers `openai/gpt-oss-120b` and `openai/gpt-oss-20b`, listed at 30 requests/min and 1K requests/day (Developer-plan table; free-tier values may be lower). No payment method is needed.
+- **Claude Agent SDK** uses API-key authentication billed per token. Its overview says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." It's built to run Claude Code's agent loop and tools, which Metor doesn't need.
+- **OpenAI**: "ChatGPT and the API platform have separate billing systems." ChatGPT Pro and eligible Business plans can claim monthly API credits for a linked API organization (Plus, trials, Enterprise and Edu don't qualify). Unused credits expire monthly. After that, purchased credits are used, or requests fail with 429 `credit_balance_exhausted`.
+
+**Decision:**
+1. Groq free tier is the default answer provider.
+2. Claude (Client SDK / Messages API) and OpenAI are optional adapters, off by default, and count as `paid` for `ALLOW_PAID_PROVIDERS`. Each needs the owner's explicit choice and a follow-up ADR before it's built.
+3. Only official API-key authentication. Never consumer logins, session tokens, scraping, or anything that works around subscription or rate limits.
+4. OpenAI subscription credits could keep spending at $0 only if the owner has an eligible plan and the linked API org has no purchased credits or auto-recharge. Metor can't verify this, so the owner must check it before enabling.
+
+**Consequences:** No change to the $0 default. Answer quality starts with open-weight models on Groq, and the evaluation set (docs/ANSWER_EVALUATION.md) shows whether that's good enough before any paid option is considered.
+
