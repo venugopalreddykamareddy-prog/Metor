@@ -13,6 +13,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { ANSWER_ENGINES, type AnswerEngine, type ServerMessageBody } from '../shared/messages.ts';
 import { extractQuestions, isAnswerable } from '../shared/extract.ts';
 import { findExperienceClaims } from '../shared/experienceClaims.ts';
+import { checkAvailabilityNumbers } from '../shared/numericChecks.ts';
 import { correctTerms } from '../shared/vocabulary.ts';
 import { GROQ_CHAT_LIMITS, scaled } from '../server/src/app.ts';
 import { AnswerSession } from '../server/src/answer/engine.ts';
@@ -152,6 +153,7 @@ for (const q of questions) {
     completionTokens: got.done?.usage?.completionTokens ?? null,
     reasoningTokens: got.done?.usage?.reasoningTokens ?? null,
     truncated: got.done?.truncated ?? false,
+    numericIssues: checkAvailabilityNumbers(answer).map((i) => i.message),
     error,
     style: styleIssues(answer),
     suspectedHallucination: error ? false : suspectedHallucination(q.category, answer, assessment),

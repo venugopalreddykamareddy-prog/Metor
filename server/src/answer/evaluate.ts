@@ -31,6 +31,8 @@ export interface EvalResult {
   completionTokens?: number | null;
   reasoningTokens?: number | null;
   truncated?: boolean;
+  /** Local availability-number checks that failed (shared/numericChecks.ts). */
+  numericIssues?: string[];
   error: string | null;
   style: string[];
   /** Fabricated / experience-trap answer that doesn't clearly decline, or any claimed experience. */
@@ -125,6 +127,7 @@ export interface EvalSummary {
   /** Provider-reported averages over answers that reported usage. */
   tokensPerAnswer: { n: number; prompt: number | null; completion: number | null; reasoning: number | null; total: number | null };
   truncated: string[];
+  numericIssues: string[];
   byCategory: Record<string, { n: number; assessmentCorrect: number }>;
 }
 
@@ -176,6 +179,7 @@ export function summarize(results: EvalResult[]): EvalSummary {
       };
     })(),
     truncated: results.filter((r) => r.truncated).map((r) => r.id),
+    numericIssues: results.filter((r) => r.numericIssues?.length).map((r) => r.id),
     firstTokenP50Ms: percentile(firstTokens, 0.5),
     firstTokenP95Ms: percentile(firstTokens, 0.95),
     byCategory,

@@ -46,6 +46,12 @@ describe('buildMessages', () => {
     expect(system).toContain('two related terms swapped');
   });
 
+  it('asks for general numerical validation, not specific evaluation answers', () => {
+    expect(system).toContain('Higher availability means a stricter target and less downtime');
+    expect(system).toContain('downtime = (100% − availability) × period');
+    expect(system).toContain('must agree with the numbers');
+  });
+
   it('uses no wording from the evaluation sets, so scores are not inflated', () => {
     const prompt = system.toLowerCase();
     for (const file of ['answer-questions.json', 'holdout-questions.json']) {
