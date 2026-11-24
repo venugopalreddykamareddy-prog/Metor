@@ -10,7 +10,8 @@ Metor is a personal project: a browser app that will transcribe speech, spot que
 | 1. Web foundation | Done (PR #2) |
 | 2. Login, mic capture, simulated transcription | Done (PR #4) |
 | 3. Real transcription: Browser speech and Groq Whisper | In review (PR #5) |
-| 4–9. Answers, resume grounding, practice mode, desktop app, hardening, release | Planned |
+| 4. Question understanding and answers: validate the question first (false premises, made-up terms, mishearings), one request per question | Planned |
+| 5–9. Resume grounding and experience checks, practice mode, desktop app, hardening, release | Planned |
 | 10–12. Camera preview, presence coaching, disclosed gaze correction | Planned (no video work yet) |
 
 Details for every phase: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
@@ -24,7 +25,9 @@ Metor transcribes what you say. There are no AI answers yet.
   - **Groq Whisper** (free tier, needs `GROQ_API_KEY`): the server sends speech segments to Groq; text appears a few seconds after you pause. Usage is capped below the free-tier limits, and Metor never falls back to a paid service.
   - **Simulated**: canned interview questions, for tests and demos.
 - **Technical vocabulary**: both real modes get hints for SRE, Kubernetes, networking, AWS, and Azure terms, and common mishearings are fixed (for example "cube cuddle" → kubectl, "a k s" → AKS).
-- **Transcript**: live partial text, final lines, duplicate lines dropped, auto-scroll, and a Clear transcript button. An Accuracy check panel scores a read-aloud script (word error rate, terms recognized, latency). See [docs/STT_EVALUATION.md](docs/STT_EVALUATION.md); no real-speech results are recorded yet.
+- **Raw and clean transcripts**: the raw view shows exactly what the recognizer heard. The clean view joins fragments into sentences, keeps question boundaries, removes "um"/"uh" and stutters, and adds capitals and punctuation. It runs locally, with no extra API calls.
+- **Corrections**: fix a misheard word once ("cloud flair" → Cloudflare) and it's fixed in future recordings too, or edit a single sentence. The raw text never changes.
+- **Transcript**: live partial text, auto-scroll, Clear transcript. An Accuracy check panel scores a read-aloud script for raw and clean text. First real test: Browser speech in Chrome, final latency p50 0.45 s over 6 samples; the full accuracy run is still to do ([docs/STT_EVALUATION.md](docs/STT_EVALUATION.md)).
 
 - **Login** with a single passphrase (scrypt hash in `.env`), an HttpOnly session cookie, and a lockout after 5 wrong attempts. Logout or the 12-hour expiry closes open connections.
 - **Recording**: Start asks for consent, then the browser's mic permission. A red indicator with a timer shows while the mic is open. Pause, Resume, and Stop work; Stop, logout, and lost sessions release the mic.

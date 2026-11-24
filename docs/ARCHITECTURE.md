@@ -131,23 +131,42 @@ sequenceDiagram
 | Tab audio | Not built yet (FR-A7). |
 | Cost / quota | No key and no API bill. The server never sees the audio, so the usage ledger doesn't apply. |
 
+### 4.5 Raw and clean transcripts (`client/src/session/cleanTranscript.ts`)
+
+Recognizers return fragments: no capitals, little punctuation, split at short pauses. Metor keeps those fragments untouched as the **raw** transcript and derives a **clean** one from them in the browser. Both views are a toggle in the transcript pane. Cleaning is pure string work on each update: no API calls, no added latency. Nothing is stored.
+
+| Step | Rule |
+|---|---|
+| Sentences | Fragments separated by < 1.2 s join into one sentence. A longer pause, an audio gap, or recognizer punctuation (`.?!`) ends it. A fragment starting with a question word (after "so", "okay"…) starts a new sentence after ≥ 0.6 s, so question boundaries survive. 60-word cap. |
+| Repeats | A fragment repeated within 5 s (recognizer restart) is dropped. Stuttered words and phrases ("what is what is the the") collapse; normal doubles ("that that", "very very") stay. |
+| Fillers | Only pure fillers are removed (um, uh, er, hmm). "Like" and "you know" can carry meaning and stay. |
+| Terms | Known mishearings are fixed only from explicit lists (`shared/vocabulary.ts`), as whole words. Phrases that are also normal English need context: "as your" → Azure only before an Azure product name; "cube" → kubectl only before a kubectl verb. Unknown words are never guessed into known terms. |
+| User corrections | "Heard as → should be" rules (kept in this browser) and per-sentence edits. They change only the clean view. |
+| Capitals and punctuation | Capitalize the sentence (not lowercase terms like `kubectl`) and the pronoun "I". Add `?` if it opens with a question word, `…` if it ends on a word that can't end a sentence ("because", "the"), otherwise `.`. Keep punctuation the recognizer already gave. The last sentence stays open while a partial is showing. |
+
+The accuracy check scores both views. Phase 4 question detection will read the clean view's sentence boundaries and `?` marks.
+
 ## 5. AI engine
 
-### 5.1 Answer pipeline
+### 5.1 Answer pipeline (Phase 4)
+
+At most **one LLM request per question**. Everything before it is local and free.
 
 ```mermaid
 flowchart TD
-  T[transcript.final] --> H{Heuristic question?}
-  H -- yes --> D{Duplicate of recent?}
-  H -- ambiguous --> C[Cheap LLM classify] --> D
-  H -- no --> X[Ignore]
-  M[Manual 'Answer this'] --> D
-  D -- yes --> X
-  D -- no --> K[Classify type<br/>concept / troubleshoot / behavioral / coding / design]
-  K --> R[Retrieve KB items<br/>verified first, ranked by relevance to question + JD]
-  R --> P[Build prompt<br/>system rules + profile + KB in delimiters + last N turns]
-  P --> L[Stream LLM]
-  L --> U[Stream tokens to UI]
+  T[Clean sentence ends with ? or a question pattern] --> PRE
+  M[Manual Answer this] --> PRE
+  PRE[Local pre-checks] -->|greeting, small talk, logistics, unfinished| X[No answer card]
+  PRE -->|duplicate of a recent question| X
+  PRE -->|several questions at once| SPLIT[Split, keep order]
+  PRE --> HINTS
+  SPLIT --> HINTS[Hints for the prompt: unknown terms, possible mishearings, earlier turns]
+  HINTS --> P[Build prompt: rules, profile, verified KB, last N turns, hints]
+  P --> L[One streamed LLM request]
+  L --> H[Header: type, assessment, clarifying question]
+  L --> A[Answer text]
+  H --> UI1[Assessment chip, shown separately]
+  A --> UI2[Answer pane]
   N[New question arrives] -. cancel .-> L
 ```
 
@@ -158,6 +177,7 @@ flowchart TD
 - Imperative prompts common in interviews: "Give me an example of…", "Talk about…".
 - Debounce ~600–800 ms of silence after the final segment before triggering, to avoid answering half-asked questions.
 - De-dup: normalize (lowercase, strip fillers/punctuation) → compare against the last 10 questions with token-overlap similarity; skip if > 0.8.
+- Input is the **clean** transcript (§4.5): its sentence boundaries and `?` marks are the first signal. The raw text is kept for misheard-term checks.
 
 ### 5.3 Prompt structure
 
@@ -183,13 +203,57 @@ flowchart TD
 [USER]  The question: "…"
 ```
 
-### 5.4 Context management
+### 5.4 Question understanding and validation (Phases 4–5)
+
+Implements FR-U1–FR-U9 and FR-C1–FR-C4.
+
+**Local pre-checks (free, before any request):**
+
+| Check | How |
+|---|---|
+| Greeting, small talk, logistics | Short phrase list ("can you hear me", "let me share my screen", "how was your weekend") → no answer card |
+| Unfinished sentence | The clean view's last sentence is still open, or it ends with "…" → wait |
+| Several questions | Split on `?` boundaries in one clean sentence group; answer in order |
+| Duplicate | Same normalized question as one of the last 10 → skip (FR-Q3) |
+| Unknown terms | Technical-looking tokens (acronyms, CamelCase, "the X command/protocol/tool") not in the local glossary (`shared/vocabulary.ts` plus a larger list of real technologies and the user's own "internal tools" list in Phase 5) → passed as a **hint** "not in Metor's glossary", never as a verdict |
+| Possible mishearing | A term the clean view corrected, or close to a glossary term → hint with both raw and corrected text |
+
+**One LLM request** returns a short header and then the answer, so validation adds no extra call:
+
+```
+TYPE: technical | behavioral | follow_up | ambiguous | off_topic | experience_probe
+ASSESSMENT: none | incorrect_premise | unrecognized_term | possible_transcription_error | clarification_needed | unrealistic_requirement | insufficient_information | unverified_experience | off_topic
+NOTE: one short sentence, only when ASSESSMENT is not none
+CLARIFY: one short question, or -
+ANSWER:
+<streamed answer>
+```
+
+The client parses the header as it streams and shows the assessment as a separate chip above the answer. A malformed header is ignored, and the whole output is shown as the answer.
+
+**Prompt rules for validation** (added to §5.3):
+- Treat every term as unverified. If you don't recognize it, say so and consider an internal tool, a vendor product, or a mishearing. Don't define it.
+- Distinguish "I don't recognize this" from "this is false". Correct a false premise politely, in one sentence, then answer the real question.
+- Never invent commands, flags, products, protocol behavior, or experience. Say what you'd check instead.
+- For unrealistic requirements, say why and propose realistic targets before designing.
+- If a short clarifying question is needed, ask it. Otherwise answer with stated assumptions.
+- Only use `ASSESSMENT` when something is actually off. Difficult or unusual-but-real topics get `none`.
+- Never claim to have checked documentation. Reference notes in the KB (Phase 5) may be cited only when they are in the context.
+- Experience probes: confirm only what verified KB items say. Otherwise say plainly that it isn't your experience and offer what is.
+
+**Answer style** (FR-Q10): direct answer, then reasoning; a natural one-line opening and closing; no stock filler; STAR only for behavioral and experience questions from verified stories; length per FR-Q6.
+
+**Conversation context:** the last 3–5 turns verbatim plus a rolling summary (§5.5). The header's `TYPE: follow_up` tells the UI the answer continues the previous one. A correction ("sorry, I meant…") replaces the previous question instead of adding a new one.
+
+**Evaluation:** `eval/answer-questions.json` (110 questions in 11 categories) and docs/ANSWER_EVALUATION.md. Runs use simulated answers in CI (format checks only) and the free-tier provider manually for quality.
+
+### 5.5 Context management
 
 - Keep the last 3–5 Q&A turns verbatim; older turns are summarized into a rolling summary of ~200 tokens.
 - KB retrieval for MVP: keyword/BM25-style scoring in the browser (no vector DB). Revisit embeddings only if relevance is measurably poor (ADR required).
 - Cap total prompt context (e.g. ~6k tokens) to bound latency and cost.
 
-### 5.5 Providers and models
+### 5.6 Providers and models
 
 Model identifiers are **not** hard-coded in code. They come from env vars after verifying current official provider docs at the start of Phases 3–4 (ADR-009 lists what was observed on 2026-11-24).
 
@@ -369,7 +433,7 @@ Target: **$0/month**. Defaults: simulated providers, `ALLOW_PAID_PROVIDERS=false
 - Simulated mode for all UI development and CI (zero API cost, no quota use).
 - Pause transcription when the user pauses; stop streaming on silence where the provider supports VAD.
 - Heuristic question detection before any LLM classification.
-- Bounded context (§5.4); short/standard answers by default, detailed on demand.
+- Bounded context (§5.5); short/standard answers by default, detailed on demand.
 - Server-side limits: `MAX_ANSWERS_PER_SESSION`, `MAX_TRANSCRIPTION_MINUTES`, `DAILY_SPEND_LIMIT_USD`, plus local free-tier quotas; UI shows usage and quota reset times.
 - Use a smaller model for classification and summaries (`GROQ_CLASSIFY_MODEL`), larger only for answers. This also saves free-tier tokens.
 

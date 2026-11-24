@@ -42,6 +42,31 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
 | FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 
+### 2.2a Understanding and validating the question (Phases 4–5)
+
+Before answering, Metor works out what kind of question it is and whether it rests on something true. The goal is the judgment of an experienced engineer: answer real questions directly, push back on false premises politely, and say "I don't know that one" instead of inventing.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-U1 | Classify intent: genuine technical, behavioral/scenario, follow-up, multiple questions at once, ambiguous/incomplete, off-topic or small talk, experience probe ("you've done X, right?"), possibly misheard | P0 (Phase 4) |
+| FR-U2 | Never assume a mentioned term is real. Distinguish "I don't recognize this" (could be an internal tool, a vendor product, or a mishearing) from "this is wrong". Never invent definitions, commands, products, or behavior | P0 |
+| FR-U3 | Detect incorrect technical premises and correct them politely before answering | P0 |
+| FR-U4 | Recognize impossible or unrealistic requirements (zero latency, 100% uptime) and propose realistic targets | P0 |
+| FR-U5 | Ask one short clarifying question when the question can't be answered as asked; otherwise answer with stated assumptions | P0 |
+| FR-U6 | When a term may be misheard, show what was heard (raw transcript) and the likely intended term, and answer the likely one | P0 |
+| FR-U7 | Experience probes are answered only from verified KB items; otherwise correct the premise without claiming the experience | P0 (general) / P1 (with KB, Phase 5) |
+| FR-U8 | Show a short **assessment** separately from the suggested answer when something is off. Labels: incorrect premise, unrecognized term, possible transcription error, clarification needed, unrealistic requirement, insufficient information, unverified experience, off-topic. No assessment for ordinary questions; difficulty or unusual-but-real technology is not a reason to flag | P0 |
+| FR-U9 | Say so when something can't be verified. Never claim a check against documentation happened unless it did. Verifying against official docs is optional and only from sources Metor actually has (e.g. curated notes in the KB, Phase 5) | P0 |
+
+### 2.2b Conversation awareness (Phase 4)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-C1 | Use recent questions and answers as context; answer follow-ups without repeating earlier answers | P0 |
+| FR-C2 | Notice topic changes, interruptions, and corrections ("sorry, I meant mutual TLS") and switch cleanly | P0 |
+| FR-C3 | Don't produce answers for greetings, small talk, meeting logistics, or unfinished sentences unless a reply is useful | P0 |
+| FR-C4 | Split several questions asked together and answer them in order | P0 |
+
 ### 2.3 Answer formats
 
 | Question type | Structure |
@@ -52,7 +77,13 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | Coding | Problem restatement → approach → implementation → complexity → edge cases → tests |
 | System design | Requirements → architecture → components → scalability → reliability → security → observability → trade-offs |
 
-Answers should sound conversational (a brief natural opener, plain sentences, natural close), not like a textbook. STAR is never forced onto technical questions.
+**Answer style (FR-Q10, P0):** answers should sound like an experienced engineer talking, not a textbook.
+- Direct answer first, then the reasoning. Plain, professional, conversational English.
+- A short natural opening and closing sentence; no stock filler ("Great question!") and no repeated phrases.
+- Short (~30 s), standard (~1 min), and detailed (2–3 min) lengths (FR-Q6).
+- STAR only for behavioral and experience questions, built from verified stories (FR-K4). Never forced onto technical questions.
+- Explicit uncertainty instead of a made-up explanation: "I haven't come across that; if it's an internal tool, I'd want to know what it does first."
+- Never fabricate experience, achievements, employers, or metrics.
 
 ### 2.4 Providers and cost (ADR-009)
 
@@ -131,6 +162,7 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
 | NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
+| NFR-12 | Answer quality | Measured on the evaluation set (`eval/answer-questions.json`, 110 questions; method in docs/ANSWER_EVALUATION.md): factual accuracy, hallucination rate (target 0 on fabricated terms and experience traps), false-positive flags on genuine/unusual-but-real questions (target ≤ 5%), clarification quality, naturalness, latency |
 
 ## 5. Out of scope
 

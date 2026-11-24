@@ -74,6 +74,8 @@ Format: Context → Decision → Consequences. Status: Proposed / Accepted / Sup
 
 **Consequences:** Some missed or false detections; mitigated by manual trigger and tunable rules with unit tests.
 
+**Amended (Phase 3 review):** there is no separate LLM classification call. Ambiguous cases go into the single answer request, whose header reports the question type and assessment (ARCHITECTURE §5.4).
+
 ---
 
 ## ADR-007: Single-user passphrase auth with HttpOnly cookie sessions
@@ -135,7 +137,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 - Groq transcription returns **finals per utterance** (no interim partials). NFR-1 partial latency applies only to streaming-capable sources (Web Speech interim results). Groq latency is measured and recorded separately, and end-to-end answer latency has a per-provider target (NFR-2b).
 - Segments must be ≥ 8 s in normal speech, or the 10 s minimum per request exhausts the hourly audio quota (ARCHITECTURE §4.3).
-- A billing-enabled provider account would silently make the same key paid. Mitigations: local quotas from published free-tier limits, shadow-cost tracking, and a tier check if the provider exposes one (ARCHITECTURE §5.5).
+- A billing-enabled provider account would silently make the same key paid. Mitigations: local quotas from published free-tier limits, shadow-cost tracking, and a tier check if the provider exposes one (ARCHITECTURE §5.6).
 - Free-tier quotas cap daily use; the UI must show remaining quota and reset times.
 - Web Speech transcripts come from the browser, not the server, so the server cannot rate-limit them; they cost nothing, but audio goes to the browser vendor under its policy.
 - Gemini cannot be used for resume-grounded answers on the free tier.
@@ -177,4 +179,16 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 - **Measuring accuracy in the app:** an Accuracy check panel scores the transcript against a read-aloud script (word error rate, technical-term recall, final latency p50). Results go in `docs/STT_EVALUATION.md`; no numbers are recorded until real runs exist.
 
 **Consequences:** No new dependencies. Web Speech can't be tested headlessly, so Playwright drives a fake `SpeechRecognition`. Real accuracy depends on the user's voice and mic, so the comparison needs a manual run. Groq is never called in CI.
+
+---
+
+## ADR-012: Keep the raw transcript; derive a clean one locally
+
+**Status:** Accepted · 2026-11-24 (Phase 3 review)
+
+**Context:** Real speech recognition returns fragmented, lowercase, unpunctuated text with occasional misheard terms. Fixing it with an LLM would add latency and API calls; fixing it in place would lose what was actually heard.
+
+**Decision:** Engines return raw text (term fixes moved out of the Groq adapter and Web Speech wrapper). The browser builds the clean view with deterministic rules: sentence merging by pause length, filler and repeat removal, conservative term fixes, the user's corrections, capitals and end punctuation (ARCHITECTURE §4.5). Users can add "heard as → should be" rules and edit single sentences; both affect only the clean view.
+
+**Consequences:** No added latency or cost, and every rule is unit-tested. Rules can't fix grammar or deeper mistakes, and pause thresholds are guesses until real recordings tune them. Phase 4 must read the clean view, but it can show the raw text when a question looks misheard.
 

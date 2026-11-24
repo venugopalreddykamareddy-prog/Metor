@@ -41,6 +41,9 @@ Single `package.json` at the root, managed with **pnpm** (version pinned in `pac
 9. **Account for every provider call** through the spend + quota ledger (reserve, then reconcile). When usage is unknown, keep the full reservation.
 10. **Free-first:** default providers are `simulated`. Paid providers stay disabled (`ALLOW_PAID_PROVIDERS=false`). Never add an automatic fallback to a paid provider. On free-tier quota exhaustion, pause and tell the user. Never treat provider budget alerts as hard caps.
 11. **Provider data rules:** never send resume/KB content to the Gemini free tier. Verify model IDs, quotas, and data policies from official docs at the start of the phase that uses them (ADR-009).
+12. **Raw stays raw:** recognizer output is stored as heard. Cleanup, term fixes and user corrections only produce the derived clean view. Term fixes come from explicit lists, never fuzzy guesses.
+13. **Validate, don't invent:** answer prompts must treat every term as unverified, separate "I don't recognize this" from "this is false", correct wrong premises politely, ask for clarification when needed, and never invent definitions, commands, products, or experience. Never claim a documentation check that didn't happen. Show assessments separately from answers, and don't flag questions just for being hard or unusual (ARCHITECTURE §5.4).
+14. **One request per question:** question understanding and the answer share a single LLM request; local checks come first.
 
 ## Code standards
 

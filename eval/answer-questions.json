@@ -1,0 +1,1262 @@
+{
+  "version": 1,
+  "description": "Phase 4/5 answer evaluation set. See docs/ANSWER_EVALUATION.md.",
+  "questions": [
+    {
+      "id": "genu-01",
+      "category": "genuine",
+      "domain": "sre",
+      "question": "What is the difference between an SLI, an SLO, and an SLA?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "SLI = measurement, SLO = internal target on an SLI, SLA = contract with consequences."
+    },
+    {
+      "id": "genu-02",
+      "category": "genuine",
+      "domain": "kubernetes",
+      "question": "How does Kubernetes decide which node a pod is scheduled on?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Scheduler filters nodes (resources, taints/tolerations, affinity) then scores them."
+    },
+    {
+      "id": "genu-03",
+      "category": "genuine",
+      "domain": "networking",
+      "question": "How does BGP choose the best path between multiple routes to the same prefix?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Ordered attributes: weight (Cisco), highest LOCAL_PREF, locally originated, shortest AS_PATH, origin, lowest MED, eBGP over iBGP, IGP metric, router ID."
+    },
+    {
+      "id": "genu-04",
+      "category": "genuine",
+      "domain": "security",
+      "question": "Can you explain how a TLS 1.3 handshake works?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "1-RTT: ClientHello with key share, ServerHello + encrypted extensions + certificate + finished; ephemeral (EC)DHE only."
+    },
+    {
+      "id": "genu-05",
+      "category": "genuine",
+      "domain": "linux",
+      "question": "How would you troubleshoot high CPU usage on a Linux server?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "top/htop, pidstat, perf, check steal time, load vs CPU, recent changes."
+    },
+    {
+      "id": "genu-06",
+      "category": "genuine",
+      "domain": "sre",
+      "question": "What is an error budget and how do you use it in practice?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "1 - SLO over a window; spend on releases/risk; freeze or slow changes when exhausted."
+    },
+    {
+      "id": "genu-07",
+      "category": "genuine",
+      "domain": "networking",
+      "question": "How does OSPF build its routing table?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Link-state: neighbors exchange LSAs into an LSDB per area, each router runs SPF (Dijkstra)."
+    },
+    {
+      "id": "genu-08",
+      "category": "genuine",
+      "domain": "kubernetes",
+      "question": "What's the difference between a Kubernetes Deployment and a StatefulSet?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "StatefulSet gives stable identities, ordered rollout, per-pod persistent volumes."
+    },
+    {
+      "id": "genu-09",
+      "category": "genuine",
+      "domain": "payments",
+      "question": "How would you make payment processing idempotent?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Idempotency keys stored with request result, unique constraints, safe retries, exactly-once effects via dedupe."
+    },
+    {
+      "id": "genu-10",
+      "category": "genuine",
+      "domain": "automation",
+      "question": "How does Terraform state locking work with an S3 backend?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Lock via DynamoDB table or S3 native lockfile (newer versions) to prevent concurrent applies."
+    },
+    {
+      "id": "genu-11",
+      "category": "genuine",
+      "domain": "azure",
+      "question": "What's the difference between Azure Front Door and Azure Application Gateway?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Front Door: global layer-7 edge/CDN/WAF; Application Gateway: regional layer-7 load balancer/WAF in a VNet."
+    },
+    {
+      "id": "genu-12",
+      "category": "genuine",
+      "domain": "kubernetes",
+      "question": "How do readiness and liveness probes differ in Kubernetes?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Readiness gates traffic (endpoints); liveness restarts the container."
+    },
+    {
+      "id": "unus-01",
+      "category": "unusual_real",
+      "domain": "distributed-systems",
+      "question": "Explain how Raft handles leader election during a network partition.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly; do not flag as a trick"
+      },
+      "note": "Majority quorum; minority side cannot elect a leader; terms prevent split brain."
+    },
+    {
+      "id": "unus-02",
+      "category": "unusual_real",
+      "domain": "azure",
+      "question": "What consistency levels does Azure Cosmos DB offer?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Strong, bounded staleness, session, consistent prefix, eventual."
+    },
+    {
+      "id": "unus-03",
+      "category": "unusual_real",
+      "domain": "networking",
+      "question": "How does EIGRP's DUAL algorithm avoid routing loops?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Feasibility condition with feasible successors; diffusing computations when no FS."
+    },
+    {
+      "id": "unus-04",
+      "category": "unusual_real",
+      "domain": "linux",
+      "question": "How does the Linux OOM killer choose which process to kill?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "oom_score based on memory use, adjusted by oom_score_adj."
+    },
+    {
+      "id": "unus-05",
+      "category": "unusual_real",
+      "domain": "kubernetes",
+      "question": "What is Kueue used for in Kubernetes?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly; it is a real Kubernetes SIG project"
+      },
+      "note": "Job queueing and quota management for batch workloads."
+    },
+    {
+      "id": "unus-06",
+      "category": "unusual_real",
+      "domain": "kubernetes",
+      "question": "Have you used Hubble with Cilium, and what does it show you?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer about the tool; experience claims only if verified"
+      },
+      "note": "Hubble provides network flow observability for Cilium (eBPF)."
+    },
+    {
+      "id": "unus-07",
+      "category": "unusual_real",
+      "domain": "networking",
+      "question": "What is BFD and why would you run it alongside BGP?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Bidirectional Forwarding Detection gives sub-second failure detection so BGP reconverges faster."
+    },
+    {
+      "id": "unus-08",
+      "category": "unusual_real",
+      "domain": "aws",
+      "question": "What is AWS Nitro?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "AWS hypervisor and hardware offload system underlying modern EC2 instances."
+    },
+    {
+      "id": "fabr-01",
+      "category": "fabricated",
+      "domain": "kubernetes",
+      "question": "How would you use the kubectl rewind command to undo a bad deployment?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say kubectl has no rewind command; offer kubectl rollout undo"
+      },
+      "note": "No such kubectl subcommand."
+    },
+    {
+      "id": "fabr-02",
+      "category": "fabricated",
+      "domain": "kubernetes",
+      "question": "When would you enable Istio Hyperdrive mode for low-latency services?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say this mode isn't something you recognize; ask if it's internal or vendor-specific"
+      },
+      "note": "Not an Istio feature."
+    },
+    {
+      "id": "fabr-03",
+      "category": "fabricated",
+      "domain": "networking",
+      "question": "How do you configure OSPF Turbo Areas to speed up convergence?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say OSPF has no 'Turbo Area' type; mention real area types and timers"
+      },
+      "note": "OSPF area types: backbone, standard, stub, totally stubby, NSSA."
+    },
+    {
+      "id": "fabr-04",
+      "category": "fabricated",
+      "domain": "aws",
+      "question": "What is the advantage of AWS Route 64 over Route 53?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say there is no Route 64; Route 53 is AWS DNS"
+      },
+      "note": "Fabricated service."
+    },
+    {
+      "id": "fabr-05",
+      "category": "fabricated",
+      "domain": "azure",
+      "question": "How does the Azure CosmicGuard firewall integrate with Front Door?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "don't invent; mention Azure Firewall / Front Door WAF and ask what they mean"
+      },
+      "note": "Fabricated product."
+    },
+    {
+      "id": "fabr-06",
+      "category": "fabricated",
+      "domain": "kubernetes",
+      "question": "Walk me through the helm prophecy command in Helm 7.",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say no such command and no Helm 7 you know of; don't invent behavior"
+      },
+      "note": "Fabricated."
+    },
+    {
+      "id": "fabr-07",
+      "category": "fabricated",
+      "domain": "databases",
+      "question": "How does PostgreSQL's MERGE-RAFT replication mode compare to streaming replication?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say this isn't a PostgreSQL replication mode you know; describe real options"
+      },
+      "note": "PostgreSQL has streaming and logical replication; MERGE is a SQL command."
+    },
+    {
+      "id": "fabr-08",
+      "category": "fabricated",
+      "domain": "observability",
+      "question": "Have you configured Datadog Retro-Tracing for payment flows?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say you don't recognize the feature; ask; don't claim experience"
+      },
+      "note": "Fabricated feature."
+    },
+    {
+      "id": "fabr-09",
+      "category": "fabricated",
+      "domain": "linux",
+      "question": "How would you tune the systemd-healerd daemon to restart failed services?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say this daemon isn't known; describe systemd Restart= policies"
+      },
+      "note": "Fabricated daemon."
+    },
+    {
+      "id": "fabr-10",
+      "category": "fabricated",
+      "domain": "network-security",
+      "question": "Explain how Cisco ASA Quantum NAT handles overlapping subnets.",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "don't invent; describe twice NAT / NAT for overlapping networks"
+      },
+      "note": "Fabricated feature."
+    },
+    {
+      "id": "fabr-11",
+      "category": "fabricated",
+      "domain": "ci-cd",
+      "question": "We use an internal deploy tool called Shipyard. How would you add canary support to it?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "treat as a possibly internal tool; ask how it works; answer with general canary approach"
+      },
+      "note": "Unknown internal tool: not false, just unfamiliar."
+    },
+    {
+      "id": "fabr-12",
+      "category": "fabricated",
+      "domain": "automation",
+      "question": "How does Terraform Quantum Planner reduce plan times for large states?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say this isn't a Terraform feature you know; mention real ways to speed up plans"
+      },
+      "note": "Fabricated."
+    },
+    {
+      "id": "inco-01",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "Since UDP guarantees in-order delivery, why does DNS still need retries?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "politely correct: UDP guarantees neither delivery nor order"
+      },
+      "note": "UDP is connectionless with no ordering or delivery guarantee."
+    },
+    {
+      "id": "inco-02",
+      "category": "incorrect_premise",
+      "domain": "kubernetes",
+      "question": "Because liveness probes remove a pod from Service endpoints, how would you use them for slow dependencies?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: readiness controls endpoints, liveness restarts"
+      },
+      "note": "Liveness failure restarts the container; readiness removes it from endpoints."
+    },
+    {
+      "id": "inco-03",
+      "category": "incorrect_premise",
+      "domain": "sre",
+      "question": "Given that the SLA is our internal target and the SLO is the customer contract, how should we set them?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct the definitions gently, then answer"
+      },
+      "note": "Reversed: SLO internal, SLA contractual."
+    },
+    {
+      "id": "inco-04",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "OSPF is a distance-vector protocol, so how does it avoid count-to-infinity?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: OSPF is link-state"
+      },
+      "note": "OSPF is link-state."
+    },
+    {
+      "id": "inco-05",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "BGP prefers the lowest local preference, so how would you make a path preferred?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: highest LOCAL_PREF wins"
+      },
+      "note": "Higher LOCAL_PREF is preferred."
+    },
+    {
+      "id": "inco-06",
+      "category": "incorrect_premise",
+      "domain": "aws",
+      "question": "Since S3 is block storage, how would you format it as a file system for EC2?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: S3 is object storage; EBS is block storage"
+      },
+      "note": "S3 = object storage."
+    },
+    {
+      "id": "inco-07",
+      "category": "incorrect_premise",
+      "domain": "automation",
+      "question": "We commit Terraform state to Git so the team shares it. How should we structure that repo?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "flag the risk (secrets, conflicts); suggest a remote backend with locking"
+      },
+      "note": "State can contain secrets; use remote state with locking."
+    },
+    {
+      "id": "inco-08",
+      "category": "incorrect_premise",
+      "domain": "security",
+      "question": "TLS 1.3 still uses RSA key exchange, so how do we keep forward secrecy?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: TLS 1.3 removed static RSA key exchange; it uses ephemeral (EC)DHE"
+      },
+      "note": "TLS 1.3 key exchange is (EC)DHE only."
+    },
+    {
+      "id": "inco-09",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "A /24 gives us 1,024 host addresses, so how would you split it into four subnets?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: a /24 has 256 addresses (254 usable)"
+      },
+      "note": "/24 = 256 addresses."
+    },
+    {
+      "id": "inco-10",
+      "category": "incorrect_premise",
+      "domain": "azure",
+      "question": "Azure Key Vault stores secrets unencrypted for speed, so what extra encryption should we add?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: Key Vault encrypts secrets at rest"
+      },
+      "note": "Key Vault encrypts at rest (HSM-backed options)."
+    },
+    {
+      "id": "inco-11",
+      "category": "incorrect_premise",
+      "domain": "sre",
+      "question": "Adding replicas always lowers p99 latency, right? So should we just double them?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "challenge 'always'; latency may be bound by dependencies, locks, or downstream"
+      },
+      "note": "More replicas don't fix downstream bottlenecks."
+    },
+    {
+      "id": "inco-12",
+      "category": "incorrect_premise",
+      "domain": "sre",
+      "question": "With 99.99% availability we can afford about four hours of downtime a month. How do we plan maintenance?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: 99.99% is about 4.3 minutes a month"
+      },
+      "note": "99.99% ≈ 4.38 min/month; 99.9% ≈ 43.8 min/month."
+    },
+    {
+      "id": "tric-01",
+      "category": "tricky_troubleshooting",
+      "domain": "sre",
+      "question": "Latency doubled after a deploy, but CPU and memory look normal. What do you check?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "methodical: diff the change, dependency latency, connection pools, GC, logs, traces"
+      },
+      "note": "Resource graphs can look fine while waits (I/O, locks, downstream) grow."
+    },
+    {
+      "id": "tric-02",
+      "category": "tricky_troubleshooting",
+      "domain": "kubernetes",
+      "question": "Pods are in CrashLoopBackOff but the logs are empty. What next?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "kubectl describe, previous logs, events, exit code, command/entrypoint, OOMKilled"
+      },
+      "note": "--previous logs and events often explain it."
+    },
+    {
+      "id": "tric-03",
+      "category": "tricky_troubleshooting",
+      "domain": "linux",
+      "question": "dig resolves the name fine, but the application can't resolve it. Why might that be?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "resolver differences: /etc/resolv.conf, nsswitch, search domains, caching, container DNS"
+      },
+      "note": "dig bypasses the system resolver path the app uses."
+    },
+    {
+      "id": "tric-04",
+      "category": "tricky_troubleshooting",
+      "domain": "networking",
+      "question": "The BGP session is Established but we receive no routes. What would you check?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "inbound filters/route-maps, prefix limits, AFI/SAFI, peer advertising, next-hop"
+      },
+      "note": "Session state says nothing about policy."
+    },
+    {
+      "id": "tric-05",
+      "category": "tricky_troubleshooting",
+      "domain": "linux",
+      "question": "The disk is full, but du shows only half of it used. What's going on?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "deleted files still held open (lsof +L1), reserved blocks, mounts hiding data"
+      },
+      "note": "Classic deleted-but-open file case."
+    },
+    {
+      "id": "tric-06",
+      "category": "tricky_troubleshooting",
+      "domain": "kubernetes",
+      "question": "We see intermittent 502s from the load balancer, but only during deploys.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "connection draining, readiness timing, keep-alive mismatch, preStop hooks"
+      },
+      "note": "Pods removed before draining connections."
+    },
+    {
+      "id": "tric-07",
+      "category": "tricky_troubleshooting",
+      "domain": "security",
+      "question": "After a certificate renewal, TLS fails for some clients but not others.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "missing intermediate chain, old clients without new root, SNI, cipher support"
+      },
+      "note": "Incomplete chain hits clients without cached intermediates."
+    },
+    {
+      "id": "tric-08",
+      "category": "tricky_troubleshooting",
+      "domain": "kubernetes",
+      "question": "A node shows NotReady, but kubelet is running. What do you look at?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "kubelet logs, container runtime, CNI, disk/memory pressure, node conditions, API connectivity"
+      },
+      "note": "NotReady comes from node conditions, not just the process."
+    },
+    {
+      "id": "tric-09",
+      "category": "tricky_troubleshooting",
+      "domain": "payments",
+      "question": "The payment API returned success, but the ledger shows duplicate charges.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "retries without idempotency keys, at-least-once queues, timeout + retry race"
+      },
+      "note": "Idempotency and dedupe on the write path."
+    },
+    {
+      "id": "tric-10",
+      "category": "tricky_troubleshooting",
+      "domain": "networking",
+      "question": "Ping works, but TCP connections to port 443 time out.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "firewall/security group, MTU/PMTUD, listening socket, asymmetric routing, SYN drops"
+      },
+      "note": "ICMP reachability ≠ TCP path."
+    },
+    {
+      "id": "ambi-01",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "How would you scale it?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what 'it' is and what limits it hits; don't guess a system"
+      },
+      "note": "No context."
+    },
+    {
+      "id": "ambi-02",
+      "category": "ambiguous",
+      "domain": "observability",
+      "question": "What's your approach to monitoring?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer with a brief framework and note assumptions; one clarifying question is fine"
+      },
+      "note": "Broad but answerable; don't flag as a trick."
+    },
+    {
+      "id": "ambi-03",
+      "category": "ambiguous",
+      "domain": "ci-cd",
+      "question": "Can you fix the pipeline?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask which pipeline and what is failing"
+      },
+      "note": "No details."
+    },
+    {
+      "id": "ambi-04",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "Which one is better?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what the options are"
+      },
+      "note": "No referent."
+    },
+    {
+      "id": "ambi-05",
+      "category": "ambiguous",
+      "domain": "sre",
+      "question": "How fast should it be?",
+      "expected": {
+        "assessment": "insufficient_information",
+        "behavior": "ask for users, workload, and SLO context"
+      },
+      "note": "Depends on requirements."
+    },
+    {
+      "id": "ambi-06",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "Tell me about the migration.",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask which migration; if KB has one verified migration, offer it"
+      },
+      "note": "Ambiguous referent."
+    },
+    {
+      "id": "ambi-07",
+      "category": "ambiguous",
+      "domain": "kubernetes",
+      "question": "How many nodes do we need?",
+      "expected": {
+        "assessment": "insufficient_information",
+        "behavior": "list what's needed: load, per-node capacity, redundancy target"
+      },
+      "note": "Can't size without numbers."
+    },
+    {
+      "id": "ambi-08",
+      "category": "ambiguous",
+      "domain": "security",
+      "question": "Is that secure?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what 'that' refers to and the threat model"
+      },
+      "note": "No referent."
+    },
+    {
+      "id": "ambi-09",
+      "category": "ambiguous",
+      "domain": "payments",
+      "question": "Design a payment system that handles 10 billion transactions per second with zero latency and 100% uptime.",
+      "expected": {
+        "assessment": "unrealistic_requirement",
+        "behavior": "say zero latency and 100% uptime aren't achievable; propose realistic targets and then design"
+      },
+      "note": "Physically impossible requirements."
+    },
+    {
+      "id": "ambi-10",
+      "category": "ambiguous",
+      "domain": "distributed-systems",
+      "question": "We need cross-region strong consistency with single-digit millisecond writes worldwide.",
+      "expected": {
+        "assessment": "unrealistic_requirement",
+        "behavior": "explain the speed-of-light/consensus trade-off; offer options"
+      },
+      "note": "Global strong consistency costs round-trip latency."
+    },
+    {
+      "id": "irre-01",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Hi, thanks for joining today.",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card; small talk"
+      },
+      "note": "Greeting."
+    },
+    {
+      "id": "irre-02",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Can you hear me okay?",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card"
+      },
+      "note": "Audio check."
+    },
+    {
+      "id": "irre-03",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "How was your weekend?",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card (optionally a one-line friendly reply)"
+      },
+      "note": "Small talk."
+    },
+    {
+      "id": "irre-04",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Let me share my screen.",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card"
+      },
+      "note": "Meeting logistics."
+    },
+    {
+      "id": "irre-05",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Sorry, my dog is barking.",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card"
+      },
+      "note": "Noise."
+    },
+    {
+      "id": "irre-06",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "What's your favorite movie?",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "brief, personal; no technical answer"
+      },
+      "note": "Off-topic."
+    },
+    {
+      "id": "irre-07",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Who won the football match last night?",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "say it's off-topic or unknown; don't invent a result"
+      },
+      "note": "Unverifiable current event."
+    },
+    {
+      "id": "irre-08",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "So, um, what I wanted to ask was, uh",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "wait: unfinished sentence, no answer yet"
+      },
+      "note": "Unfinished question."
+    },
+    {
+      "id": "mish-01",
+      "category": "misheard",
+      "domain": "kubernetes",
+      "question": "How do you use cube cuddle to roll back a deployment?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as kubectl (rollout undo) and say so"
+      },
+      "note": "'cube cuddle' is a common mishearing of kubectl."
+    },
+    {
+      "id": "mish-02",
+      "category": "misheard",
+      "domain": "automation",
+      "question": "How does Terra form manage state?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Terraform"
+      },
+      "note": "Split word."
+    },
+    {
+      "id": "mish-03",
+      "category": "misheard",
+      "domain": "networking",
+      "question": "Explain how BGP and OS PF interact.",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as OSPF (redistribution, iBGP next-hop via IGP)"
+      },
+      "note": "Split acronym."
+    },
+    {
+      "id": "mish-04",
+      "category": "misheard",
+      "domain": "azure",
+      "question": "How do you secure secrets in as your key vault?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Azure Key Vault"
+      },
+      "note": "'as your' → Azure."
+    },
+    {
+      "id": "mish-05",
+      "category": "misheard",
+      "domain": "kubernetes",
+      "question": "What is the purpose of a cooper netties operator?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Kubernetes operator"
+      },
+      "note": "Mishearing."
+    },
+    {
+      "id": "mish-06",
+      "category": "misheard",
+      "domain": "observability",
+      "question": "How do you monitor services with data dog APM?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Datadog APM"
+      },
+      "note": "Split word."
+    },
+    {
+      "id": "mish-07",
+      "category": "misheard",
+      "domain": "aws",
+      "question": "How would you set up eye am roles for EC2 instances?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as IAM roles; mention the assumption"
+      },
+      "note": "Not in the correction list: tests reasoning, not regex."
+    },
+    {
+      "id": "mish-08",
+      "category": "misheard",
+      "domain": "aws",
+      "question": "How do you configure VPC peering versus a transit gate way?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Transit Gateway"
+      },
+      "note": "Split word."
+    },
+    {
+      "id": "mish-09",
+      "category": "misheard",
+      "domain": "aws",
+      "question": "Explain Route fifty three health checks.",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Route 53"
+      },
+      "note": "Number spoken as words."
+    },
+    {
+      "id": "mish-10",
+      "category": "misheard",
+      "domain": "kubernetes",
+      "question": "What is the role of the cube let on a node?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as kubelet"
+      },
+      "note": "Split word."
+    },
+    {
+      "id": "expe-01",
+      "category": "experience_trap",
+      "domain": "kubernetes",
+      "question": "You've managed 10,000-node Kubernetes clusters, right? Tell me about that.",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Scale claim not in KB."
+    },
+    {
+      "id": "expe-02",
+      "category": "experience_trap",
+      "domain": "networking",
+      "question": "Walk me through your CCIE lab experience.",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Certification must be in KB."
+    },
+    {
+      "id": "expe-03",
+      "category": "experience_trap",
+      "domain": "sre",
+      "question": "How did you reduce MTTR by 80% at your last job?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Metric must come from a verified story."
+    },
+    {
+      "id": "expe-04",
+      "category": "experience_trap",
+      "domain": "azure",
+      "question": "Tell me about the time you led the migration to Azure Front Door.",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Leadership + project must be verified."
+    },
+    {
+      "id": "expe-05",
+      "category": "experience_trap",
+      "domain": "automation",
+      "question": "You wrote the Terraform provider for Palo Alto, didn't you?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Authorship claim."
+    },
+    {
+      "id": "expe-06",
+      "category": "experience_trap",
+      "domain": "payments",
+      "question": "What was the hardest part of leading your PCI DSS Level 1 audit?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Role claim."
+    },
+    {
+      "id": "expe-07",
+      "category": "experience_trap",
+      "domain": "payments",
+      "question": "As on-call lead for a platform doing a million transactions per second, how did you handle peak load?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Scale and role claim."
+    },
+    {
+      "id": "expe-08",
+      "category": "experience_trap",
+      "domain": "network-security",
+      "question": "You've run Zscaler ZPA in production for years. What's your favorite feature?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Duration claim."
+    },
+    {
+      "id": "expe-09",
+      "category": "experience_trap",
+      "domain": "distributed-systems",
+      "question": "Describe your experience running Kafka at petabyte scale.",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "only answer from verified KB experience; otherwise politely correct the premise and offer related verified experience or a general answer"
+      },
+      "note": "Scale claim."
+    },
+    {
+      "id": "expe-10",
+      "category": "experience_trap",
+      "domain": "sre",
+      "question": "How many incidents did you personally resolve last year?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "don't invent a number; give one only if the KB has it"
+      },
+      "note": "Metric must not be invented."
+    },
+    {
+      "id": "foll-01",
+      "category": "follow_up",
+      "domain": "networking",
+      "question": "And what if two paths have the same local preference?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "continue BGP path selection (AS_PATH next) without repeating the first answer"
+      },
+      "note": "Next tie-breakers after LOCAL_PREF.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How does BGP choose the best path?"
+        }
+      ]
+    },
+    {
+      "id": "foll-02",
+      "category": "follow_up",
+      "domain": "kubernetes",
+      "question": "Which one would you use for a slow-starting Java app?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "recommend a startup probe; don't restate the whole comparison"
+      },
+      "note": "startupProbe protects slow starts from liveness kills.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "Explain readiness versus liveness probes."
+        }
+      ]
+    },
+    {
+      "id": "foll-03",
+      "category": "follow_up",
+      "domain": "sre",
+      "question": "How would you alert on it?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "burn-rate alerts on the SLO from the previous answer"
+      },
+      "note": "Multi-window burn-rate alerting.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How would you define an SLO for a payments API?"
+        }
+      ]
+    },
+    {
+      "id": "foll-04",
+      "category": "follow_up",
+      "domain": "automation",
+      "question": "Why not CloudFormation?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "compare briefly, tied to the Terraform answer"
+      },
+      "note": "Multi-cloud, module ecosystem vs native AWS integration.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How do you manage infrastructure as code?"
+        },
+        {
+          "role": "candidate",
+          "text": "We use Terraform with remote state and modules."
+        }
+      ]
+    },
+    {
+      "id": "foll-05",
+      "category": "follow_up",
+      "domain": "behavioral",
+      "question": "What would you do differently next time?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "stay within the same verified story"
+      },
+      "note": "Must not invent new story facts.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "Tell me about a time you handled an outage."
+        }
+      ]
+    },
+    {
+      "id": "foll-06",
+      "category": "follow_up",
+      "domain": "security",
+      "question": "Sorry, I meant mutual TLS.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "switch to mTLS (client certificates) without repeating standard TLS"
+      },
+      "note": "Correction of the previous question.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How does TLS work?"
+        }
+      ]
+    },
+    {
+      "id": "foll-07",
+      "category": "follow_up",
+      "domain": "sre",
+      "question": "What is an SLI, how is it different from an SLO, and who owns the SLA?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "detect three questions; answer each briefly in order"
+      },
+      "note": "Multiple questions at once."
+    },
+    {
+      "id": "foll-08",
+      "category": "follow_up",
+      "domain": "networking",
+      "question": "Actually, let's switch to networking. How does OSPF elect a DR?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "drop the Kubernetes thread; answer the new topic"
+      },
+      "note": "Highest priority, then highest router ID; non-preemptive.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How would you debug a Kubernetes DNS issue?"
+        }
+      ]
+    },
+    {
+      "id": "beha-01",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about a time you handled a production incident.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-02",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Describe a conflict with a teammate and how you resolved it.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-03",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about a time you made a mistake in production.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-04",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Give an example of when you automated a manual process.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-05",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Describe a time you pushed back on a release.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-06",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about improving reliability with limited resources.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-07",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Describe how you handled an on-call escalation in the middle of the night.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-08",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about mentoring a junior engineer.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-09",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Describe a time you disagreed with an architecture decision.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    },
+    {
+      "id": "beha-10",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about a time you had to learn a new technology quickly.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from a verified KB story only; if none matches, say so and offer a clearly labeled hypothetical approach"
+      },
+      "note": "Grounding: no invented employers, metrics, or incidents."
+    }
+  ]
+}
