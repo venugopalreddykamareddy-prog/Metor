@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { CLOSE_AUTH_ENDED, FRAME_SAMPLES, MAX_PAYLOAD_BYTES, encodeAudioFrame } from '../../shared/messages.ts';
@@ -22,9 +25,16 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-async function makeApp(overrides: Partial<ServerConfig> = {}, logStream?: { write(line: string): void }) {
+async function makeApp(
+  overrides: Partial<ServerConfig> = {},
+  logStream?: { write(line: string): void },
+  groqFetch?: typeof fetch,
+) {
   const config = { ...loadConfig({ APP_PASSPHRASE_HASH: passphraseHash }), ...overrides };
-  const app = await buildApp(config, logStream ? { logStream } : { logger: false });
+  const app = await buildApp(config, {
+    ...(logStream ? { logStream } : { logger: false }),
+    ...(groqFetch ? { groqFetch } : {}),
+  });
   await app.ready();
   apps.push(app);
   return app;
@@ -51,7 +61,9 @@ async function connect(app: FastifyInstance, cookie: string) {
     for (;;) {
       const found = messages.find(match);
       if (found) return found;
-      if (Date.now() > deadline) throw new Error(`timed out; got ${messages.map((m) => m.type).join(', ')}`);
+      if (Date.now() > deadline) {
+        throw new Error(`timed out; got ${messages.map((m) => (m.type === 'error' ? `error:${m.code}` : m.type)).join(', ')}`);
+      }
       await new Promise((r) => setTimeout(r, 10));
     }
   };
@@ -106,6 +118,12 @@ describe('HTTP auth', () => {
     const res = await login(app);
     expect(res.statusCode).toBe(429);
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('/api/me reports whether Groq is configured', async () => {
+    const plain = await makeApp();
+    const me = await plain.inject({ method: 'GET', url: '/api/me', headers: { cookie: await loginCookie(plain) } });
+    expect(me.json()).toEqual({ authenticated: true, providers: { groq: false } });
   });
 
   it('logout ends the session', async () => {
@@ -254,6 +272,54 @@ describe('recording', () => {
     late.sendJson({ type: 'session.resume', sessionId: rec.sessionId, lastFinalSeq: 0 });
     await late.waitFor((m) => m.type === 'error' && m.code === 'session_expired');
     late.ws.terminate();
+  });
+
+  it('refuses Groq mode when GROQ_API_KEY is not set', async () => {
+    const app = await makeApp();
+    const conn = await connect(app, await loginCookie(app));
+    conn.sendJson({ type: 'session.start', mode: 'groq', source: 'mic' });
+    await conn.waitFor((m) => m.type === 'error' && m.code === 'provider_unavailable');
+    conn.ws.terminate();
+  });
+
+  it('transcribes speech through Groq (faked) and stops at the length limit', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'metor-app-'));
+    try {
+      const uploads: FormData[] = [];
+      const fakeGroq = (async (_url: string, init: RequestInit) => {
+        uploads.push(init.body as FormData);
+        return Response.json({ segments: [{ text: ' check b g p on the router', no_speech_prob: 0.02 }] });
+      }) as unknown as typeof fetch;
+      const app = await makeApp(
+        { groq: { apiKey: 'test', model: 'whisper-large-v3-turbo' }, usageLedgerPath: join(dir, 'l.json'), maxTranscriptionMs: 4000 },
+        undefined,
+        fakeGroq,
+      );
+      const cookie = await loginCookie(app);
+      const me = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } });
+      expect(me.json().providers).toEqual({ groq: true });
+
+      const conn = await connect(app, cookie);
+      conn.sendJson({ type: 'session.start', mode: 'groq', source: 'mic' });
+      await conn.waitFor((m) => m.type === 'session.started');
+      const tone = Int16Array.from({ length: FRAME_SAMPLES }, (_, i) => Math.round(8000 * Math.sin(i / 5)));
+      const silence = new Int16Array(FRAME_SAMPLES);
+      let seq = 0;
+      for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, tone)));
+      for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, silence)));
+      const final = await conn.waitFor((m) => m.type === 'transcript.final');
+      // Raw Whisper text; the client's cleaned view turns "b g p" into BGP.
+      expect(final).toMatchObject({ text: 'check b g p on the router', finalSeq: 1, latencyMs: expect.any(Number) });
+      expect(uploads).toHaveLength(1);
+
+      // 45 frames in total stays under the rate limiter's 60-frame burst; the 4 s limit hits at frame 40.
+      for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, silence)));
+      await conn.waitFor((m) => m.type === 'error' && m.code === 'limit_reached');
+      conn.ws.terminate();
+    } finally {
+      await Promise.all(apps.splice(0).map((a) => a.close()));
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('rejects audio before session.start and malformed frames', async () => {

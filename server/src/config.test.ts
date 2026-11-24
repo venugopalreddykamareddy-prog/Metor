@@ -23,11 +23,24 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ APP_PASSPHRASE_HASH: 'nope' })).toThrow(/malformed/);
   });
 
-  it('accepts only simulated providers and no paid providers', () => {
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, STT_PROVIDER: 'simulated', ANSWER_PROVIDER: 'simulated' })).not.toThrow();
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, STT_PROVIDER: 'groq' })).toThrow(/not available yet/);
+  it('keeps answers simulated and refuses paid providers', () => {
+    expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'simulated' })).not.toThrow();
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'gemini' })).toThrow(/not available yet/);
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, ALLOW_PAID_PROVIDERS: 'true' })).toThrow(/must be false/);
+  });
+
+  it('offers Groq only when GROQ_API_KEY is set, with a default model', () => {
+    expect(loadConfig({ APP_PASSPHRASE_HASH }).groq).toBeNull();
+    expect(loadConfig({ APP_PASSPHRASE_HASH, GROQ_API_KEY: 'k' }).groq).toEqual({ apiKey: 'k', model: 'whisper-large-v3-turbo' });
+    expect(loadConfig({ APP_PASSPHRASE_HASH, GROQ_API_KEY: 'k', GROQ_TRANSCRIPTION_MODEL: 'whisper-large-v3' }).groq?.model).toBe(
+      'whisper-large-v3',
+    );
+  });
+
+  it('reads limits and rejects bad numbers', () => {
+    const c = loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '30', FREE_QUOTA_SAFETY_RATIO: '0.5' });
+    expect(c).toMatchObject({ maxTranscriptionMs: 30 * 60_000, freeQuotaRatio: 0.5 });
+    expect(() => loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '-1' })).toThrow(/Invalid/);
   });
 
   it.each(['0', '70000', 'abc'])('rejects invalid PORT %s', (port) => {

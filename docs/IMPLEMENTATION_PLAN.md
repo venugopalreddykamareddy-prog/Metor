@@ -174,39 +174,85 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 3 — Real-time transcription integration
+## Phase 3 — Real transcription ✅ (merged, PR #5; accuracy not yet measured)
 
-**Objective:** Add free real transcription behind the same adapter: `GroqSTT` (server, per-utterance upload) and an evaluated `webspeech` client option. Simulated stays the default.
+**Objective:** Show the words actually spoken. Browser speech (Web Speech API) first, Groq Whisper free tier as the alternative, simulated kept for tests (ADR-011).
 
-**Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. The server refuses to start with any real provider unless `APP_PASSPHRASE_HASH` is set.
+**Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. ✅
 
-**Key tasks:** re-verify official docs for Groq (endpoint, models, formats, free-tier limits from the account limits page, data policy, ZDR) and Web Speech (browser support, `start(audioTrack)`, vendor data policy); implement the **spend + quota ledger (ARCHITECTURE §11.1) before the first real provider call**, including conservative reservations for unknown usage; implement `GroqSTT` (segment sizing per ARCHITECTURE §4.3 with a unit test of the hourly quota math, WAV header, ≥10 s accounting, rolling-window quotas, shadow cost, 429/`retry-after` → `quota_exhausted`); implement the `webspeech` client adapter behind login (mic, plus Chromium tab track if it works; restart on end; no `processLocally`); compare both on 3 test recordings (accuracy on technical terms, latency) and record results; decide ADR-005; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
+**Acceptance**
+- [x] Transcription mode selector: Simulated, Browser speech (when supported), Groq Whisper (only when `GROQ_API_KEY` is set). Disabled while recording (e2e)
+- [x] Browser speech runs on Metor's own mic track, restarts after silence, boosts technical phrases where supported, and stops and releases the mic on fatal errors (e2e with a fake `SpeechRecognition`)
+- [x] Groq: speech segments sized for the free-tier quota, WAV upload with vocabulary prompt, silence and Whisper hallucinations dropped, finals kept in order (unit tests with a fake Groq)
+- [x] Usage ledger charges each Groq call before sending, survives restarts, and refuses calls over the local free-tier limits; a 429 pauses uploads until `retry-after` with **no provider switch** (unit tests)
+- [x] `MAX_TRANSCRIPTION_MINUTES` stops a recording (integration test)
+- [x] Technical-term corrections on finals; duplicate finals dropped; empty partials cleared; partial finalized on pause/stop (unit tests)
+- [x] Transcript auto-scrolls unless the user scrolls up; Clear transcript button (e2e)
+- [x] Accuracy check panel: word error rate, technical-term recall, final latency p50, for raw and clean text (unit + e2e)
+- [x] Raw transcript kept as heard; clean view with sentence merging, question boundaries, filler and repeat removal, capitals and punctuation (unit tests on sentence reconstruction; e2e)
+- [x] Term fixes only from explicit lists, with context for ambiguous phrases ("as your manager" stays); unknown terms untouched (unit tests)
+- [x] User corrections: "heard as → should be" rules remembered in the browser, and per-sentence edits; raw unchanged (unit + e2e)
+- [x] Owner's manual test (2026-11-24): Browser speech works in Chrome with a real voice; final latency p50 0.45 s over 6 samples
+- [x] CI never calls Groq or a real speech service
+- [ ] **Measured on real speech:** word error rate and term recall for both modes, Groq end-of-segment → text p50 < 2.0 s. Needs the owner's voice, Chrome, and a Groq key; method and results table in `docs/STT_EVALUATION.md`.
+- [ ] **Real services exercised:** Browser speech in Chrome and a live Groq request haven't been run from here (no mic, no key). The owner checks them when running the evaluation.
+- [ ] ADR-005: Groq stays behind the server relay (the key never reaches the browser). Whether Groq offers ephemeral client tokens wasn't checked; not needed while relaying.
 
-**Acceptance:** Groq end-of-utterance → final p50 < 2.0 s and Web Speech partial p50 < 1.0 s, measured in the debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test), keeps reservations when usage is unknown (test), and refuses calls over local quota or a non-zero spend limit; mocked provider 429 → feature pauses with reset time and **no provider switch** (test); upstream calls stop on disconnect and on logout; Web Speech unavailable until logged in (test); provider data policies re-verified in SECURITY_PRIVACY §2.2. CI never calls a real provider.
+**Not in this phase:** tab or system audio capture (FR-A7), speaker separation.
 
-**Risks:** free-tier limits or models change; Groq per-utterance latency; Web Speech behavior differs by browser and may not accept display-capture tracks.
+**Notes:** On disconnect, the segment being collected is dropped; an upload already in flight finishes and its final is replayed on resume. On logout, in-flight results are discarded.
 
 ---
 
-## Phase 4 — Question detection and streaming AI answers
+## Phase 4 — Question understanding and streaming answers
 
-**Objective:** Detect questions, classify type, stream answers with cancellation and de-dup.
+**Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
-**Key tasks:** heuristic detector (pure functions + test table of 50+ real phrasings); silence debounce; de-dup; answer engine with prompt templates per type/length; **`SimulatedAnswer` adapter first** (streams canned, type-appropriate answers for UI and CI); `GroqAnswer` adapter (re-verify model IDs and free-tier limits); optional `GeminiAnswer` adapter (requires `GEMINI_FREE_TIER_DATA_ACK=true`, strips KB content, refused in live modes); `answer.*` messages; Markdown sanitized rendering; ledger reservations for classification and answers; quota-exhausted handling with no automatic fallback; timing instrumentation. Sessions remain in memory only (FR-S1).
+**Entry gate:** Phase 3 merged. ✅ (The owner chose to merge before the accuracy run; it moved into the acceptance list below.)
 
-**No personal-experience claims yet (FR-Q8):** without a verified KB, prompts instruct general/theoretical answers. Behavioral questions get a clearly labeled example approach, never a first-person story.
+**Key tasks**
+- **Question extraction** (§5.2, FR-E1–E7): split clean sentences into greeting / filler / statement / request / question parts using boundary cues that don't need punctuation; keep compound questions whole; drop abandoned questions after "let me rephrase"; completion rules beyond pauses (closed sentence, no dangling word, debounce); one answer per question, with growing questions updating the pending one; "Extracted questions" list with answer, dismiss, merge, and split.
+- Local pre-checks: unknown-term and possible-mishearing hints, telling mishearings apart from unfamiliar names (§5.4, FR-U10).
+- `SimulatedAnswer` adapter first (streams a valid header plus a canned answer, for UI and CI); then **`GroqAnswer` as the default** (`openai/gpt-oss-120b`; re-verify model IDs and free-tier limits); optional `GeminiAnswer` (no KB content, not in live modes). Claude and OpenAI adapters are **not** built in this phase (ADR-013): official API keys only, off by default, and only after the owner opts in and checks billing.
+- One request returning the `TYPE / ASSESSMENT / NOTE / CLARIFY / ANSWER` header plus the streamed answer; the client parses it and shows the assessment chip separately; a malformed header falls back to plain answer text.
+- Prompt rules for validation, uncertainty, natural style, and lengths (§5.3–5.4, FR-Q10). No first-person experience without a verified KB (FR-Q8).
+- Conversation context: last turns plus a rolling summary; follow-ups, corrections, and topic switches.
+- Ledger reservations for answer requests; quota exhaustion handled with no fallback; latency instrumentation.
+- Evaluation runner over `eval/answer-questions.json` (simulated in CI; manual free-tier run).
 
-**Acceptance:** 0 duplicate requests in test script; final-transcript → first-token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b measured and recorded for each STT provider; cancel stops upstream request and keeps the reservation unless usage is reported; Gemini adapter never receives KB content (test); quota exhaustion never selects another provider (test); detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
+**Acceptance**
+- Carried from Phase 3: Browser speech (and Groq, if a key is set) measured on the accuracy script; word error rate and term recall recorded in docs/STT_EVALUATION.md.
+- 0 duplicate requests in the test script; never more than one LLM request per detected question.
+- Extraction fixture (`eval/question-extraction.json`): the right questions, word for word, in ≥ 90% of cases; no answer for filler-only and incomplete cases (unit tests).
+- Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…") are extracted as questions.
+- Incomplete phrases ("can you please help me to") are never answered; the answer waits until the question finishes, and a completed question replaces its earlier incomplete version.
+- Several questions in one continuous stretch are extracted separately; a rapid topic change starts a new item and cancels the in-flight answer.
+- Duplicate transcript events are dropped; a genuine repeat re-shows the earlier answer without a new request.
+- Ambiguous acronyms (AAA, AA, …) are resolved from context with the assumption stated, or a clarifying question is asked; never a silent guess.
+- Original meaning is preserved: extracted questions are word-for-word spans of the clean transcript.
+- Question detection accuracy measured on the extraction fixture plus the answer evaluation set: precision and recall ≥ 90% for "is this an answerable question".
+- End-to-end latency measured and recorded per transcription mode: speech end → first answer token (NFR-2b), and final transcript → first token (NFR-2).
+- `irrelevant` items produce no answer card (≥ 7 of 8); several questions at once are split.
+- Final transcript → first token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b recorded per transcription mode.
+- Answers are natural and conversational, not textbook-style (naturalness ≥ 4/5). STAR is used only for experience questions, and only from verified KB stories once Phase 5 exists; before that, behavioral questions get a labeled example approach (FR-Q8).
+- On the answer evaluation set (technical, behavioral, tricky, fabricated, irrelevant, misleading questions) with the free-tier provider: assessment accuracy ≥ 85%, false-positive flags ≤ 5%, **0 hallucinations** on fabricated terms and experience traps, factual accuracy ≥ 1.7/2, naturalness ≥ 4/5 (docs/ANSWER_EVALUATION.md).
+- Cancel stops the upstream request; the reservation is kept unless usage is reported. Gemini never receives KB content (test). Quota exhaustion never selects another provider (test).
 
 ---
 
-## Phase 5 — Resume and job description integration
+## Phase 5 — Resume, job description, and verified experience
 
-**Objective:** Knowledge base with provenance labels, grounded answers.
+**Objective:** Knowledge base with provenance labels; grounded answers and experience checks.
 
-**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI with provenance labels; grounded answers only via providers allowed to receive personal data (Groq with ZDR, not Gemini free tier); text/Markdown import; keyword retrieval; prompt grounding + injection defenses; **opt-in session persistence (FR-S1b) shipped together with retention, expiry purge, per-session delete, "delete everything", and export (FR-S4)**; UI note that local deletion does not affect provider retention.
+**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI with provenance labels (`verified`, `theoretical`, `hypothetical`); text/Markdown import; keyword retrieval; prompt grounding + injection defenses; grounded answers only via providers allowed to receive personal data (Groq with ZDR, not Gemini free tier); **opt-in session persistence (FR-S1b) shipped together with retention, expiry purge, per-session delete, "delete everything", and export (FR-S4)**; UI note that local deletion does not affect provider retention.
 
-**Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; injection test documents ("ignore previous instructions…") do not change behavior; with persistence off (the default), nothing session-related is written to IndexedDB (test); expired sessions are purged on startup (test with a mocked clock).
+**Validation work in this phase:**
+- **Experience probes** (FR-U7): claims like "you've run 10,000-node clusters" are checked against `verified` KB items. A matching item → STAR answer from it. No match → `unverified_experience` and an honest answer.
+- **Internal tools and company terms:** the user can add their own terms ("Shipyard: internal deploy tool"). Metor then treats them as known context instead of "unrecognized".
+- **Reference notes:** the user can paste excerpts from official docs into the KB as `reference` items. Answers may cite them, and only them, when explaining that something was checked (FR-U9).
+- Resume-based traps and behavioral items in the evaluation set are re-run with a sample KB.
+
+**Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; all `experience_trap` items answered without claiming unverified experience; internal tools added by the user are no longer flagged; injection test documents ("ignore previous instructions…") do not change behavior; with persistence off (the default), nothing session-related is written to IndexedDB (test); expired sessions are purged on startup (test with a mocked clock).
 
 ---
 
@@ -241,6 +287,24 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 **Objective:** Full E2E regression suite (extending the smoke tests from Phases 1–2), deployment of the server to a lightweight host with authentication, versioned release with CHANGELOG.
 
 **Key tasks:** choose host (ADR); auth for the deployed server; release workflow; user guide.
+
+---
+
+## Phase 10 — Camera access and preview (planned)
+
+**Objective:** Optional camera with the same consent rules as the mic: explicit start, a visible camera indicator, a local preview only, nothing recorded or uploaded by default. FR-V1.
+
+---
+
+## Phase 11 — Presence coaching (planned)
+
+**Objective:** Feedback on eye contact, head position, posture, and lighting while practicing. It should run in the browser on the preview frames without storing video; choose the approach in an ADR (it must respect the no-local-heavy-models rule). FR-V2.
+
+---
+
+## Phase 12 — Disclosed gaze correction and virtual camera (planned)
+
+**Objective:** Optional gaze correction and a virtual camera output, for practice or where everyone has agreed. Always visible as such to other participants, consistent with SECURITY_PRIVACY §1 (no concealment). A virtual camera needs an OS-level component on the Mac, which conflicts with the current no-local-install rule; it needs its own ADR before any work starts. FR-V3.
 
 ---
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTranscript, dropPartial, emptyTranscript } from './transcript.ts';
+import { applyTranscript, clearTranscript, dropPartial, emptyTranscript, transcriptText } from './transcript.ts';
 
 const env = { id: 'x', ts: 1 };
 const partial = (text: string) => ({ type: 'transcript.partial' as const, ...env, segmentId: 's', text });
@@ -12,7 +12,7 @@ describe('applyTranscript', () => {
     expect(t.partial).toBe('how does');
     t = applyTranscript(t, final(1, 'how does BGP work'));
     expect(t.partial).toBeNull();
-    expect(t.lines).toEqual([{ kind: 'final', key: 'f1', finalSeq: 1, text: 'how does BGP work' }]);
+    expect(t.lines).toEqual([{ kind: 'final', key: 'f1', finalSeq: 1, text: 'how does BGP work', startMs: 0, endMs: 100 }]);
   });
 
   it('ignores finals replayed after a reconnect', () => {
@@ -33,5 +33,23 @@ describe('applyTranscript', () => {
     const t = dropPartial(applyTranscript(applyTranscript(emptyTranscript, final(1, 'a')), partial('b')));
     expect(t.partial).toBeNull();
     expect(t.lines).toHaveLength(1);
+  });
+
+  it('keeps repeated fragments in the raw transcript (the cleaned view drops them)', () => {
+    let t = applyTranscript(emptyTranscript, final(1, 'run kubectl get pods'));
+    t = applyTranscript(t, final(2, 'run kubectl get pods'));
+    expect(transcriptText(t)).toBe('run kubectl get pods run kubectl get pods');
+  });
+
+  it('treats an empty partial as no partial', () => {
+    const t = applyTranscript(applyTranscript(emptyTranscript, partial('…')), partial(''));
+    expect(t.partial).toBeNull();
+  });
+
+  it('clearTranscript empties lines but still ignores replayed finals', () => {
+    const cleared = clearTranscript(applyTranscript(emptyTranscript, final(1, 'a')));
+    expect(cleared.lines).toEqual([]);
+    expect(applyTranscript(cleared, final(1, 'a')).lines).toEqual([]);
+    expect(applyTranscript(cleared, final(2, 'b')).lines).toHaveLength(1);
   });
 });

@@ -6,6 +6,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 3 (PR #5): real transcription. Mode selector with Simulated, Browser speech (Web Speech API on Metor's own mic track, restarts after silence, phrase boosting where supported), and Groq Whisper (free tier, offered only when `GROQ_API_KEY` is set).
+- Groq segments sized for the free-tier quota (voice detection with an adaptive noise floor, ≥ 8 s or a 1.5 s pause up to twice a minute, 30 s cap), WAV upload with a vocabulary prompt, and filtering of silence and Whisper hallucinations. A 429 pauses uploads until the reset time; no paid fallback.
+- File-backed usage ledger: requests and audio seconds per minute for 24 h, charged before each Groq call, capped at 80% of the published free-tier limits.
+- Technical vocabulary (`shared/vocabulary.ts`): Whisper prompt, Web Speech phrases, and corrections of common mishearings on final text.
+- Transcript: duplicate finals dropped, auto-scroll, Clear transcript button, final-latency p50 in the debug line.
+- Accuracy check panel (word error rate, technical-term recall, latency) and `docs/STT_EVALUATION.md`.
+- `MAX_TRANSCRIPTION_MINUTES` is enforced. `/api/me` reports which providers are configured.
+- Raw and clean transcripts (ADR-012): raw recognizer output kept as heard; a local clean view merges fragments into sentences by pause length, keeps question boundaries, removes fillers and stutters, fixes known terms with context for ambiguous phrases, and adds capitals and punctuation.
+- User corrections: "heard as → should be" rules remembered in the browser, plus per-sentence edits. The accuracy check scores raw and clean text.
+- Phase 4/5 roadmap: question understanding and validation (FR-U1–U9), conversation awareness (FR-C1–C4), answer style (FR-Q10), one request per question with a structured assessment header, and `eval/answer-questions.json` (113 questions) with docs/ANSWER_EVALUATION.md.
+- Phase 4 question extraction requirements (FR-E1–E7), ARCHITECTURE §5.2 design, and `eval/question-extraction.json` (30 cases, questions kept word for word). FR-U10: telling mishearings apart from unfamiliar technology.
+- Phase 4 acceptance additions from the third manual test (0.30 s p50): requests without "?", incomplete phrases never answered, superseded questions (FR-E9), rapid topic changes, duplicate events vs genuine repeats (FR-E8), ambiguous acronyms (FR-U11), detection accuracy and end-to-end latency targets. Extraction fixture now 30 cases with timed events; evaluation set 113 questions.
+- ADR-013: answer providers. Groq free tier is the default; Claude (API key, billed) and OpenAI (separate API billing; ChatGPT Pro/Business credits possible) are optional, off by default, official API keys only.
+- Roadmap: Phases 10–12 (camera preview, presence coaching, disclosed gaze correction). No video code.
 - Phase 2 (PR #4): passphrase login (scrypt, HttpOnly SameSite=Strict cookie, 12 h expiry, 5-attempt lockout, Origin check on writes); `pnpm hash-passphrase`; server refuses to start without a passphrase hash or with non-simulated providers.
 - Mic recording with a consent dialog, recording indicator and timer, and Start / Pause / Resume / Stop. An AudioWorklet downsamples to 16 kHz PCM16 and sends 100 ms frames with sequence numbers.
 - Simulated transcription (canned lines at speaking pace) with partials, finals, and gap markers.
@@ -29,4 +43,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Groq audio segments are at least 8 s so the 10 s minimum per request doesn't exhaust the hourly quota.
 - Split answer latency into NFR-2 (from final transcript) and NFR-2b (end to end, per provider).
 - README: Metor as the project name, current status and what works, constraints, AI-assisted development note.
+- `STT_PROVIDER` removed: the transcription mode is chosen per recording in the UI (ADR-011).
+- Term fixes moved out of the Groq adapter and Web Speech wrapper into the clean view; risky fixes removed (e.g. "slows" → SLOs); ADR-006 amended (no separate classification request).
 - Phase 1 echo protocol removed; the WebSocket client gives up after 6 reconnect attempts (about 24 s, inside the server's 30 s resume window) and shows a Reconnect button.

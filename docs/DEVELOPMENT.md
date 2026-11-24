@@ -37,6 +37,22 @@ read -rs P && printf %s "$P" | pnpm -s hash-passphrase > .env; unset P
 pnpm exec playwright install --with-deps --only-shell chromium
 ```
 
+## Transcription modes
+
+Pick the mode next to the Start button.
+
+- **Browser speech** needs Chrome or Edge (Firefox and Safari support varies). No setup.
+- **Groq Whisper** needs a free Groq API key:
+  1. Create a key at console.groq.com. **Don't add a payment method**; that's what keeps it free.
+  2. In Groq's Data Controls, turn on Zero Data Retention.
+  3. Add `GROQ_API_KEY` as a Codespaces secret (or a line in `.env`) and restart `pnpm dev`. The Groq option appears once the server sees the key.
+  4. Usage is recorded in `data/usage-ledger.json` (gitignored). Metor stops calling Groq at 80% of the published free-tier limits; a 429 from Groq pauses it until the reset time. It never switches to a paid service.
+- **Simulated** is always available and is what the automated tests use.
+
+The transcript has two views: **Clean** (readable sentences) and **Raw** (exactly what the recognizer returned). Hover a clean sentence to see the raw text. Use **Edit** to fix one sentence, or **Fix recognition errors** to add a "heard as → should be" rule. Rules are kept in this browser and apply to future recordings.
+
+To compare modes, use the **Accuracy check** panel under the transcript; the steps are in [STT_EVALUATION.md](STT_EVALUATION.md).
+
 ## Stop the Codespace
 
 Stop the Codespace when you're done so it doesn't use up the free monthly hours: **Code** → **Codespaces** → **⋯** → **Stop codespace**, or `gh codespace stop`.
@@ -60,6 +76,9 @@ Also set the idle timeout to **5 minutes** (the default is 30): GitHub → **Set
 - **"Blocked request. This host is not allowed"** from Vite: Vite only allows this Codespace's own `-5173` URL. Make sure you're opening port 5173 of this Codespace; outside Codespaces use `http://localhost:5173`.
 - **Server exits with `APP_PASSPHRASE_HASH is not set`**: create `.env` as above.
 - **Login says "Too many attempts"**: 5 wrong passphrases lock login for 15 minutes; restarting the server clears it.
+- **No "Browser speech" option**: the browser has no `SpeechRecognition`. Use Chrome or Edge.
+- **No "Groq Whisper" option**: the server didn't see `GROQ_API_KEY`. Rebuild the Codespace after adding the secret, or put it in `.env` and restart `pnpm dev`.
+- **"Groq free-tier limit reached"**: wait for the reset time shown, or switch modes. Check `data/usage-ledger.json` for what Metor has used.
 - **"Microphone permission was denied"**: allow the mic for the forwarded URL in the browser's site settings (lock icon in the address bar).
 - **Status stays "Disconnected"**: check the server is running (`curl -s localhost:8787/healthz`) and that the server log does not show `ws upgrade rejected: origin not allowed`. If it does, add your page origin to `ALLOWED_ORIGINS`.
 - **Port already in use**: a previous run is still alive. `ss -ltnp | grep -E ':(5173|8787)'` shows the PID; stop it with `kill <pid>`.

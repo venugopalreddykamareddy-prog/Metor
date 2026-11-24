@@ -45,7 +45,7 @@ flowchart LR
   WS_C -. transcript .-> QD
 ```
 
-**Web Speech path:** with `STT_PROVIDER=webspeech` the browser recognizes speech itself (no key, no server relay); transcript text is sent to the server only as part of `answer.request`. It is enabled only for an authenticated user (§6.1).
+**Web Speech path:** in Browser speech mode the browser recognizes speech itself (no key, no audio to the Metor server); transcript text reaches the server only later, as part of `answer.request` (Phase 4). It is offered only after login (§6.1).
 
 **Alternative evaluated for Phase 3** (see ADR-005): the browser connects directly to the provider's realtime transcription endpoint using a short-lived token minted by our server. This removes one network hop. Adopt only if the provider officially supports ephemeral client tokens for transcription.
 
@@ -55,16 +55,17 @@ flowchart LR
 |---|---|---|
 | Audio capture | `client/src/audio/` | `getUserMedia` / `getDisplayMedia`, resample to provider format in an AudioWorklet, chunk ~100 ms frames |
 | WS client | `client/src/net/` | Typed messages, reconnect with exponential backoff + jitter, send queue; on close code `4401` stops capture and returns to login |
-| Web Speech STT | `client/src/stt/webspeech.ts` | Optional browser recognizer (Phase 3 evaluation); same transcript events as the server path |
+| Web Speech STT | `client/src/stt/webspeech.ts` | Browser recognizer on Metor's own mic track; restarts after silence; same transcript events as the server path |
+| Accuracy check | `client/src/eval/` | Word error rate and technical-term recall against a read-aloud script |
 | Question detector | `client/src/detect/` | Heuristic detection (pure functions), de-dup by normalized-text hash |
 | Session store | `client/src/store/` | IndexedDB wrapper (native API or a tiny wrapper, e.g. `idb` ~1 KB) |
 | UI | `client/src/ui/` | Transcript pane, answer pane, controls, settings, KB editor |
 | Auth | `server/src/auth/` | Passphrase login, in-memory cookie sessions; tracks WebSockets per session and closes them on logout/expiry (SECURITY_PRIVACY §3.1) |
 | WS gateway | `server/src/ws/` | Cookie + Origin check on upgrade, schema validation, per-connection rate limits, session resume (§6.3) |
-| Provider config | `server/src/providers/` | Reads `STT_PROVIDER`, `ANSWER_PROVIDER`, `ALLOW_PAID_PROVIDERS`; startup checks (§5.5) |
-| Transcription adapter | `server/src/stt/` | Provider-agnostic interface; `SimulatedSTT`, `GroqSTT` (segment upload) |
+| Transcription adapter | `server/src/stt/` | One interface; simulated and Groq (segment upload) implementations |
+| Vocabulary | `shared/vocabulary.ts` | Technical terms: Whisper prompt, Web Speech phrase boosts, and corrections of common mishearings |
 | Answer engine | `server/src/answer/` | Classify → build prompt → stream LLM → forward tokens; cancellation. Adapters: `SimulatedAnswer`, `GroqAnswer`, optional `GeminiAnswer` |
-| Spend + quota ledger | `server/src/limits/` | File-backed ledger; reserve cost and free-tier quota before every upstream call, reconcile after (§11.1) |
+| Usage ledger | `server/src/limits/` | File-backed free-tier usage; charged before every Groq call (§11.1) |
 | Shared schemas | `shared/` | Message types + runtime validation with `zod` (ADR-010) |
 
 ## 4. Audio capture
@@ -107,53 +108,114 @@ sequenceDiagram
 
 ### 4.3 Audio format
 
-- Capture at device rate, resample to the provider's required rate/encoding in an AudioWorklet (commonly 16 kHz or 24 kHz mono PCM16 — **TODO(verify)** against the chosen provider).
+- Capture at device rate, downsample to 16 kHz mono PCM16 in an AudioWorklet (Whisper's native rate).
 - Raw audio is never written to disk or IndexedDB. ("Keep recordings" is not in the MVP; adding it needs an ADR.)
-- **Groq segments:** Groq transcription is request/response (no documented streaming). The server buffers PCM16 per utterance, wraps it as WAV with a 44-byte header (no ffmpeg or audio library), and uploads it.
-- **Segment sizing (quota math):** each request counts as at least 10 s, and the listed Whisper limits are 20 requests/min and 7,200 audio-seconds/hour (Developer plan; free-tier values may be lower). Short segments break this: 3 s segments during continuous speech mean ~20 requests/min and ~12,000 counted seconds/hour, exhausting the hourly quota in ~36 minutes. Rules:
-  - Close a segment on silence **only once it holds ≥ 8 s of audio**; hard cap 30 s.
-  - Exception: a silence that ends a likely question (Groq gives no partials to run §5.2 heuristics on, so use silence ≥ 800 ms) may close a shorter segment, at most 2 per minute.
-  - Keep a rolling one-hour count of *counted* seconds (`max(len, 10 s)`); when it would exceed `FREE_QUOTA_SAFETY_RATIO` × the hourly limit, lengthen segments to the 30 s cap and warn the user; at the limit, pause with `quota_exhausted`.
-  - Worked check: 1 h of continuous speech in 10 s segments = 360 requests (6/min), 3,600 counted seconds — within both limits.
+- **Groq segments** (`server/src/stt/groq.ts`): Groq transcribes uploaded files, not streams. The server collects speech into segments, wraps them as WAV (44-byte header, no audio library), and uploads with `language=en`, `temperature=0`, `response_format=verbose_json`, and a short technical-vocabulary `prompt`.
+  - **Voice detection:** a frame is speech if its RMS level is above both -50 dBFS and an adaptive noise floor + 12 dB. The floor drops instantly and rises slowly, so steady background noise doesn't count. Segments start at the first speech frame with 300 ms of pre-roll.
+  - **Sizing (quota math):** Groq counts each request as at least 10 s, and the listed Whisper limits are 20 requests/min and 7,200 audio-seconds/hour. A segment closes at a 0.7 s pause once it holds ≥ 8 s, or at 30 s. Up to 2 segments a minute may close early after a 1.5 s pause, so short answers don't wait 8 s. Worked check: 1 h of continuous speech in ~10 s segments ≈ 360 requests and ≈ 3,600 counted seconds, within both limits.
+  - **Never sent:** segments with under 300 ms of speech (silence, clicks). Whisper invents text on silence, so Metor also drops returned segments with `no_speech_prob ≥ 0.6` and short "Thank you."-style outputs.
+  - **Order and failures:** uploads run one at a time so finals stay in order; 20 s timeout. A 429 pauses uploads until `retry-after`; network/HTTP errors are reported and the next segment tries again. Neither switches providers.
+  - The UI shows "…" while a segment is being collected; text arrives a few seconds after you pause.
 
-### 4.4 Browser Web Speech API (Phase 3 evaluation)
+### 4.4 Browser Web Speech API (`client/src/stt/webspeech.ts`)
 
-| Aspect | Finding / rule |
+| Aspect | How Metor handles it |
 |---|---|
-| Where recognition runs | Browser-dependent. In server-based mode audio goes to the browser vendor's service (TODO(verify) Chrome's current data policy) and does not work offline. Treated as a **real cloud API**: login required, disclosure shown. |
-| On-device mode | `processLocally = true` needs a one-time language-pack download. **Not used** (no local model downloads, ADR-003/009). |
-| Audio sources | Microphone by default. Tab audio needs `start(audioTrack)` with a `getDisplayMedia` track: Chromium 135+ and Firefox 160+ only; TODO(verify) that a display-capture track works in practice. Safari: mic only. |
-| Behavior limits | Recognition may end on silence or after a time limit; the client restarts it while the user's session is active and shows a gap marker. No speaker labels. Accuracy on technical vocabulary must be measured against the same 3 test recordings used for Groq. |
-| Cost / quota | No key and no API bill. No quota is documented; treat rate limiting by the vendor as a possible error and surface it. |
-| Server visibility | The server never sees the audio, so the ledger does not apply; per-session minute limits are enforced client-side. |
+| Where recognition runs | Browser-dependent. Chrome and Edge send audio to Google or Microsoft servers and need a network connection. Treated as a cloud API: offered only after login, and the consent dialog says where audio goes. |
+| Mic track | Metor opens the mic itself and passes the track to `start(track)` (Chrome 135+, Firefox 160+), so Stop provably releases the mic. Older browsers ignore the argument and open the default mic. |
+| On-device mode | `processLocally = true` needs a language-pack download. **Not used** (no local model downloads, ADR-003/009). |
+| Vocabulary | Technical terms are passed as `phrases` with boost 3 where `SpeechRecognitionPhrase` exists (Chrome 142+). If the service rejects them (`phrases-not-supported`), Metor restarts without them. Finals also go through the term corrections. |
+| Silence and restarts | Chrome ends continuous recognition after silence or about a minute. Metor restarts it while recording. More than 5 restarts in 10 s, 3 network errors in a row, or a permission/service error stops recording and releases the mic. `no-speech` is ignored. |
+| Duplicates | A final whose normalized text matches the previous final is dropped (recognizers sometimes repeat the last sentence after a restart). |
+| Latency | Measured as the time from the last interim result to the final. That shows how long finalization takes, not true speech-to-text latency. |
+| Tab audio | Not built yet (FR-A7). |
+| Cost / quota | No key and no API bill. The server never sees the audio, so the usage ledger doesn't apply. |
+
+### 4.5 Raw and clean transcripts (`client/src/session/cleanTranscript.ts`)
+
+Recognizers return fragments: no capitals, little punctuation, split at short pauses. Metor keeps those fragments untouched as the **raw** transcript and derives a **clean** one from them in the browser. Both views are a toggle in the transcript pane. Cleaning is pure string work on each update: no API calls, no added latency. Nothing is stored.
+
+| Step | Rule |
+|---|---|
+| Sentences | Fragments separated by < 1.2 s join into one sentence. A longer pause, an audio gap, or recognizer punctuation (`.?!`) ends it. A fragment starting with a question word (after "so", "okay"…) starts a new sentence after ≥ 0.6 s, so question boundaries survive. 60-word cap. |
+| Repeats | A fragment repeated within 5 s (recognizer restart) is dropped. Stuttered words and phrases ("what is what is the the") collapse; normal doubles ("that that", "very very") stay. |
+| Fillers | Only pure fillers are removed (um, uh, er, hmm). "Like" and "you know" can carry meaning and stay. |
+| Terms | Known mishearings are fixed only from explicit lists (`shared/vocabulary.ts`), as whole words. Phrases that are also normal English need context: "as your" → Azure only before an Azure product name; "cube" → kubectl only before a kubectl verb. Unknown words are never guessed into known terms. |
+| User corrections | "Heard as → should be" rules (kept in this browser) and per-sentence edits. They change only the clean view. |
+| Capitals and punctuation | Capitalize the sentence (not lowercase terms like `kubectl`) and the pronoun "I". Add `?` if it opens with a question word, `…` if it ends on a word that can't end a sentence ("because", "the"), otherwise `.`. Keep punctuation the recognizer already gave. The last sentence stays open while a partial is showing. |
+
+The accuracy check scores both views. Phase 4 question detection will read the clean view's sentence boundaries and `?` marks.
 
 ## 5. AI engine
 
-### 5.1 Answer pipeline
+### 5.1 Answer pipeline (Phase 4)
+
+At most **one LLM request per question**. Everything before it is local and free.
 
 ```mermaid
 flowchart TD
-  T[transcript.final] --> H{Heuristic question?}
-  H -- yes --> D{Duplicate of recent?}
-  H -- ambiguous --> C[Cheap LLM classify] --> D
-  H -- no --> X[Ignore]
-  M[Manual 'Answer this'] --> D
-  D -- yes --> X
-  D -- no --> K[Classify type<br/>concept / troubleshoot / behavioral / coding / design]
-  K --> R[Retrieve KB items<br/>verified first, ranked by relevance to question + JD]
-  R --> P[Build prompt<br/>system rules + profile + KB in delimiters + last N turns]
-  P --> L[Stream LLM]
-  L --> U[Stream tokens to UI]
+  T[Clean sentence ends with ? or a question pattern] --> PRE
+  M[Manual Answer this] --> PRE
+  PRE[Local pre-checks] -->|greeting, small talk, logistics, unfinished| X[No answer card]
+  PRE -->|duplicate of a recent question| X
+  PRE -->|several questions at once| SPLIT[Split, keep order]
+  PRE --> HINTS
+  SPLIT --> HINTS[Hints for the prompt: unknown terms, possible mishearings, earlier turns]
+  HINTS --> P[Build prompt: rules, profile, verified KB, last N turns, hints]
+  P --> L[One streamed LLM request]
+  L --> H[Header: type, assessment, clarifying question]
+  L --> A[Answer text]
+  H --> UI1[Assessment chip, shown separately]
+  A --> UI2[Answer pane]
   N[New question arrives] -. cancel .-> L
 ```
 
-### 5.2 Question detection heuristics (client, free, fast)
+### 5.2 Question extraction (Phase 4)
 
-- Ends with `?` (when the STT returns punctuation).
-- Starts with interrogatives: what, why, how, when, where, which, who, can/could/would you, tell me about, walk me through, explain, describe, have you ever.
-- Imperative prompts common in interviews: "Give me an example of…", "Talk about…".
-- Debounce ~600–800 ms of silence after the final segment before triggering, to avoid answering half-asked questions.
-- De-dup: normalize (lowercase, strip fillers/punctuation) → compare against the last 10 questions with token-overlap similarity; skip if > 0.8.
+Three layers, each kept separately: **raw** fragments (as heard) → **clean** sentences (§4.5) → **extracted questions**. Only extracted questions are answered. Extraction is local, rule-based, and free: it cuts and trims the clean text, but never rewrites it (FR-E4).
+
+**Parts.** Each clean sentence is split into parts at boundary cues, and each part gets a kind:
+
+| Kind | Examples | Answered? |
+|---|---|---|
+| greeting / small talk | "hi, thanks for joining", "can you hear me", "let me share my screen" | no |
+| filler | "okay", "right", "so yeah", "mm" | no |
+| statement / context | "we run payments on AKS", "the cluster has 40 nodes" | no; attached to the next question as context |
+| request | "walk me through…", "talk about…", "tell me about…", "explain…", "describe…", "give me an example of…" (no `?` needed) | yes |
+| question | interrogative opening or `?` | yes |
+
+**Boundary cues when punctuation is missing** (FR-E1). One continuous clean sentence like "how does BGP pick a path what about OSPF and how would you troubleshoot a flapping session" should give three questions. Cues, in order of strength:
+1. A `?` or `.` from the recognizer or the clean view.
+2. A new interrogative or request opener after a complete clause: "… pick a path **what about** …", "… session **how would you** …".
+3. Explicit enumerators: "first…", "second question…", "also…", "and another thing…".
+4. "and" + interrogative ("…and how does it…"). This splits only if the part before is already a complete question. Otherwise it's a compound question and stays whole.
+
+**Compound questions** (FR-E3). "What is an SLI and how is it different from an SLO" is one question with two parts; it isn't split, because the second part depends on the first. "What is an SLI. How do you alert on burn rate" is two.
+
+**When a question is complete** (FR-E5). A pause alone doesn't count. A question is ready to answer when all of these hold:
+- the clean sentence is closed (no partial showing);
+- it doesn't end on a dangling word ("because", "the", "and");
+- no new speech started within the debounce (default 900 ms, tuned on real recordings);
+- or it ends with `?` from the recognizer.
+
+The user can always press **Answer this**.
+
+**Incomplete and superseded questions** (FR-E5, FR-E9). "Can you please help me to" ends on an infinitive "to" with nothing after it, so it waits. When the same opening comes back completed ("…help me to understand BGP communities"), the completed text replaces the pending item, and only that gets answered. An incomplete fragment that never completes is shown greyed out in the list and isn't answered.
+
+**Rapid topic changes.** Each question is extracted on its own. A new topic after a short pause starts a new item, even mid-answer: the in-flight answer is cancelled (§5.1) and context from the old topic isn't carried into the new one unless it's a follow-up.
+
+**No duplicate answers** (FR-E6).
+- Each extracted question has an id from its source sentence keys.
+- If an answered question grows, the new text replaces the pending one and doesn't create a second question.
+- A normalized question within 0.8 token overlap of one of the last 10 is skipped.
+- Recognizer repeats are already dropped by the clean view.
+- **Duplicate event vs genuine repeat** (FR-E8): the same normalized text within ~5 s and overlapping audio is a duplicate event and is dropped. The same question later, or with a repeat cue ("again", "let me repeat", "sorry, I'll ask again"), is a genuine repeat. It re-shows the earlier answer instead of making a new request, with a button for a shorter re-explanation.
+
+**Context and follow-ups.** Statements just before a question, and the previous question and answer, travel with it as context. Short follow-ups ("and if the local preference is equal?") are marked as follow-ups rather than standalone questions.
+
+**UI** (FR-E7): an "Extracted questions" list beside the transcript. Each item links to its clean sentences and can be answered, dismissed, merged with the previous item, or split at a word.
+
+**Testing:** `eval/question-extraction.json` holds raw transcripts with the expected parts and questions. It's a unit-test fixture in Phase 4.
 
 ### 5.3 Prompt structure
 
@@ -179,30 +241,77 @@ flowchart TD
 [USER]  The question: "…"
 ```
 
-### 5.4 Context management
+### 5.4 Question understanding and validation (Phases 4–5)
+
+Implements FR-U1–FR-U9 and FR-C1–FR-C4.
+
+**Local pre-checks (free, before any request):**
+
+| Check | How |
+|---|---|
+| Greeting, small talk, logistics | Short phrase list ("can you hear me", "let me share my screen", "how was your weekend") → no answer card |
+| Unfinished sentence | The clean view's last sentence is still open, or it ends with "…" → wait |
+| Several questions, statements, small talk | Question extraction (§5.2) |
+| Duplicate | Same normalized question as one of the last 10 → skip (FR-Q3) |
+| Unknown terms | Technical-looking tokens (acronyms, CamelCase, "the X command/protocol/tool") not in the local glossary (`shared/vocabulary.ts` plus a larger list of real technologies and the user's own "internal tools" list in Phase 5) → passed as a **hint** "not in Metor's glossary", never as a verdict |
+| Ambiguous acronyms (FR-U11) | A small list of acronyms with several common meanings: AAA (authentication/authorization/accounting; triple-A rating; Arrange-Act-Assert), AA (active-active; Azure AD shorthand; other), PCI (PCI DSS; PCI bus), CSP (cloud service provider; Content Security Policy), ARP/ARPA. Context words choose a meaning ("AAA on the firewall" → authentication, authorization, accounting), and the answer says which one it assumed. No context → `clarification_needed` |
+| Possible mishearing vs unfamiliar (FR-U10) | Likely mishearing: the clean view corrected it, or it is within edit distance 2 (or the same consonant skeleton) of a glossary term in a technical sentence, e.g. "cube let" ≈ kubelet. Hint with raw and suggested text. Unfamiliar: a well-formed name with no near match ("Shipyard", "Kubeflux"). Hint "not in glossary"; the answer says so and asks |
+
+**One LLM request** returns a short header and then the answer, so validation adds no extra call:
+
+```
+TYPE: technical | behavioral | follow_up | ambiguous | off_topic | experience_probe
+ASSESSMENT: none | incorrect_premise | unrecognized_term | possible_transcription_error | clarification_needed | unrealistic_requirement | insufficient_information | unverified_experience | off_topic
+NOTE: one short sentence, only when ASSESSMENT is not none
+CLARIFY: one short question, or -
+ANSWER:
+<streamed answer>
+```
+
+The client parses the header as it streams and shows the assessment as a separate chip above the answer. A malformed header is ignored, and the whole output is shown as the answer.
+
+**Prompt rules for validation** (added to §5.3):
+- Treat every term as unverified. If you don't recognize it, say so and consider an internal tool, a vendor product, or a mishearing. Don't define it.
+- Distinguish "I don't recognize this" from "this is false". Correct a false premise politely, in one sentence, then answer the real question.
+- Never invent commands, flags, products, protocol behavior, or experience. Say what you'd check instead.
+- For unrealistic requirements, say why and propose realistic targets before designing.
+- If a short clarifying question is needed, ask it. Otherwise answer with stated assumptions.
+- Only use `ASSESSMENT` when something is actually off. Difficult or unusual-but-real topics get `none`.
+- Never claim to have checked documentation. Reference notes in the KB (Phase 5) may be cited only when they are in the context.
+- Experience probes: confirm only what verified KB items say. Otherwise say plainly that it isn't your experience and offer what is.
+
+**Answer style** (FR-Q10): direct answer, then reasoning; a natural one-line opening and closing; no stock filler; STAR only for behavioral and experience questions from verified stories; length per FR-Q6.
+
+**Conversation context:** the last 3–5 turns verbatim plus a rolling summary (§5.5). The header's `TYPE: follow_up` tells the UI the answer continues the previous one. A correction ("sorry, I meant…") replaces the previous question instead of adding a new one.
+
+**Evaluation:** `eval/answer-questions.json` (113 questions in 11 categories) and docs/ANSWER_EVALUATION.md. Runs use simulated answers in CI (format checks only) and the free-tier provider manually for quality.
+
+### 5.5 Context management
 
 - Keep the last 3–5 Q&A turns verbatim; older turns are summarized into a rolling summary of ~200 tokens.
 - KB retrieval for MVP: keyword/BM25-style scoring in the browser (no vector DB). Revisit embeddings only if relevance is measurably poor (ADR required).
 - Cap total prompt context (e.g. ~6k tokens) to bound latency and cost.
 
-### 5.5 Providers and models
+### 5.6 Providers and models
 
 Model identifiers are **not** hard-coded in code. They come from env vars after verifying current official provider docs at the start of Phases 3–4 (ADR-009 lists what was observed on 2026-11-24).
 
 | Setting | Values | Default |
 |---|---|---|
-| `STT_PROVIDER` | `simulated`, `groq`, `webspeech` | `simulated` |
+| Transcription mode | Chosen per recording in the UI: Simulated, Browser speech (if the browser has it), Groq Whisper (if `GROQ_API_KEY` is set) | Simulated (last choice is remembered) |
+| `GROQ_API_KEY` | free-tier key | empty (Groq not offered) |
 | `ANSWER_PROVIDER` | `simulated`, `groq`, `gemini` | `simulated` |
 | `ALLOW_PAID_PROVIDERS` | `true`, `false` | `false` |
-| `GROQ_TRANSCRIPTION_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs | empty (required when Groq is selected; classify falls back to the answer model) |
+| `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3-turbo` or `whisper-large-v3` (verified 2026-11-24) | `whisper-large-v3-turbo` |
+| `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs (Phase 4) | empty |
 | `GEMINI_ANSWER_MODEL` | verified model ID | empty |
 
 **Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table, and how it reports usage. Free-tier adapters charge $0 against `DAILY_SPEND_LIMIT_USD` but also record a **shadow cost** at the provider's paid prices, so usage that a billing-enabled account would be charged for is visible in the UI and logs.
 
-**Billing-enabled accounts are the main $0 risk.** If a payment method is added to the Groq organization or billing is enabled on the Gemini project, the same API key silently becomes paid (and Gemini's data terms change). The app cannot read billing state today, so it defends in depth:
-- Local quotas come from the **published free-tier limits** checked into server config, never from the account's limits page (a paid account shows higher limits).
-- In Phases 3–4, check whether the provider exposes the account tier (for example rate-limit headers that differ by plan). TODO(verify). If it does, refuse to run a `free-tier` adapter when the tier is not free.
-- A shadow cost above $0.50 in a UTC day shows a persistent warning: "Usage exceeds what a free account allows; check provider billing."
+**Billing-enabled accounts are the main $0 risk.** If a payment method is added to the Groq organization or billing is enabled on the Gemini project, the same API key silently becomes paid (and Gemini's data terms change). The app cannot read billing state, so:
+- Local quotas come from the **published free-tier limits** checked into server code, never from the account's limits page. Metor therefore can't use more than a free account allows, even on a paid account.
+- Each Groq response's `x-ratelimit-limit-requests` header is logged, which shows which plan's limits the account actually has.
+- Not built: a "shadow cost" at paid prices and a refusal when the tier isn't free. With usage capped at free-tier levels these add visibility only; revisit if a paid-capable provider is ever considered.
 
 Startup checks, in order:
 
@@ -210,6 +319,18 @@ Startup checks, in order:
 2. A `paid` adapter requires `ALLOW_PAID_PROVIDERS=true`. With it `false`, `DAILY_SPEND_LIMIT_USD` must be `0`.
 3. A selected provider requires its key and model ID, or the server refuses to start (no silent fallback).
 4. `gemini` requires `GEMINI_FREE_TIER_DATA_ACK=true`, which acknowledges both the data terms and the region rule (the free tier must not serve end users in the EEA, Switzerland, or the UK). KB/resume content is stripped before calling it and live meeting/interview modes are refused (Google's unpaid terms forbid personal data).
+
+**Answer providers (Phase 4, ADR-013).** Checked against official docs on 2026-11-24:
+
+| Option | How it authenticates | Cost to Metor | Decision |
+|---|---|---|---|
+| **Groq free tier** (`openai/gpt-oss-120b` for answers, `openai/gpt-oss-20b` for cheap work; listed at 30 RPM, 1K requests/day, 8K tokens/min, 200K tokens/day on the Developer-plan table) | API key, no payment method | $0 within free limits | **Default** streaming answer provider |
+| **Claude API** (Client SDK, Messages API with streaming) | Claude Console API key | Billed per token | Optional paid adapter, off by default (`ALLOW_PAID_PROVIDERS=false`). Enable only by owner choice and ADR |
+| **Claude Agent SDK** | API key (or Bedrock/Vertex). Its docs say that, unless previously approved, third-party developers may not offer claude.ai login or rate limits in products built on it | Billed per token | Not used. It runs Claude Code's agent loop with file and command tools, which a streaming answer doesn't need; the Client SDK is the right fit if Claude is ever enabled |
+| **OpenAI API** | API key for an API organization | Billed separately from ChatGPT. ChatGPT Pro and eligible Business plans can claim monthly API credits for a linked API org; Plus doesn't qualify. After the credits, purchased credits are used, or requests fail with HTTP 429 `credit_balance_exhausted` | Optional adapter, off by default. Could be $0 only if the owner has an eligible plan **and** the API org has no purchased credits or auto-recharge; verify both before enabling |
+| Consumer subscriptions (claude.ai, ChatGPT web/app login) | — | — | **Never** used: no unofficial login, session reuse, or scraping |
+
+Metor can't see the owner's subscriptions; the owner checks eligibility and billing settings. Any adapter that can incur charges counts as `paid` for the startup checks.
 
 **Quota exhaustion** (provider 429 / `RESOURCE_EXHAUSTED`, or the local quota in §11.1 reached): stop that feature, emit `limit.reached { kind: "free_quota", provider, resetAt? }`, keep the transcript, and show "Free quota reached — resets at …; switch to Simulated or another free provider." Honor `retry-after`. **Never switch providers automatically**, and never to a paid one.
 
@@ -363,13 +484,15 @@ Target: **$0/month**. Defaults: simulated providers, `ALLOW_PAID_PROVIDERS=false
 - Simulated mode for all UI development and CI (zero API cost, no quota use).
 - Pause transcription when the user pauses; stop streaming on silence where the provider supports VAD.
 - Heuristic question detection before any LLM classification.
-- Bounded context (§5.4); short/standard answers by default, detailed on demand.
+- Bounded context (§5.5); short/standard answers by default, detailed on demand.
 - Server-side limits: `MAX_ANSWERS_PER_SESSION`, `MAX_TRANSCRIPTION_MINUTES`, `DAILY_SPEND_LIMIT_USD`, plus local free-tier quotas; UI shows usage and quota reset times.
 - Use a smaller model for classification and summaries (`GROQ_CLASSIFY_MODEL`), larger only for answers. This also saves free-tier tokens.
 
 ### 11.1 Spend accounting
 
 The daily cap must survive reconnects and server restarts, and it must cover **every** paid call: transcription, classification, answers, and summaries.
+
+**Built in Phase 3** (`server/src/limits/usageLedger.ts`): free-tier usage in requests and audio seconds, per provider, in one-minute buckets for 24 h, saved to `SPEND_LEDGER_PATH` (default `data/usage-ledger.json`). Each Groq call is charged `max(segment length, 10 s)` **before** it is sent and is never refunded, so crashes and timeouts can't undercount. The rows below on USD prices and reconciliation describe the design for when a provider with a price exists; with only free-tier providers, cost is always $0.
 
 | Aspect | Design |
 |---|---|

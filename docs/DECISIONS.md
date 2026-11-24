@@ -74,6 +74,8 @@ Format: Context → Decision → Consequences. Status: Proposed / Accepted / Sup
 
 **Consequences:** Some missed or false detections; mitigated by manual trigger and tunable rules with unit tests.
 
+**Amended (Phase 3 review):** there is no separate LLM classification call. Ambiguous cases go into the single answer request, whose header reports the question type and assessment (ARCHITECTURE §5.4).
+
 ---
 
 ## ADR-007: Single-user passphrase auth with HttpOnly cookie sessions
@@ -110,7 +112,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Decision:**
 
-1. **Provider adapters, selected by config.** `STT_PROVIDER` = `simulated` | `groq` | `webspeech`. `ANSWER_PROVIDER` = `simulated` | `groq` | `gemini`. Both default to `simulated`. No provider is required; OpenAI is not required.
+1. **Provider adapters, selected by config.** `STT_PROVIDER` = `simulated` | `groq` | `webspeech` (changed in ADR-011: the transcription mode is now picked per recording in the UI). `ANSWER_PROVIDER` = `simulated` | `groq` | `gemini`. Both default to `simulated`. No provider is required; OpenAI is not required.
 2. **Simulated first.** `SimulatedSTT` (Phase 2) and `SimulatedAnswer` (Phase 4) are full adapters used for development, CI, and demos.
 3. **Groq free tier is the default real provider** for transcription (Whisper models) and answers (chat models), subject to Phase 3/4 evaluation.
 4. **Browser Web Speech API is evaluated** as a zero-key transcription option, with documented browser and audio-source limits. On-device mode (`processLocally`) is **not** used, because it downloads a language pack to the local machine.
@@ -135,7 +137,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 - Groq transcription returns **finals per utterance** (no interim partials). NFR-1 partial latency applies only to streaming-capable sources (Web Speech interim results). Groq latency is measured and recorded separately, and end-to-end answer latency has a per-provider target (NFR-2b).
 - Segments must be ≥ 8 s in normal speech, or the 10 s minimum per request exhausts the hourly audio quota (ARCHITECTURE §4.3).
-- A billing-enabled provider account would silently make the same key paid. Mitigations: local quotas from published free-tier limits, shadow-cost tracking, and a tier check if the provider exposes one (ARCHITECTURE §5.5).
+- A billing-enabled provider account would silently make the same key paid. Mitigations: local quotas from published free-tier limits, shadow-cost tracking, and a tier check if the provider exposes one (ARCHITECTURE §5.6).
 - Free-tier quotas cap daily use; the UI must show remaining quota and reset times.
 - Web Speech transcripts come from the browser, not the server, so the server cannot rate-limit them; they cost nothing, but audio goes to the browser vendor under its policy.
 - Gemini cannot be used for resume-grounded answers on the free tier.
@@ -159,4 +161,55 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 - **Playwright:** Chromium **headless shell only** (`--only-shell`, ~280 MB), not full Chromium (~410 MB more).
 
 **Consequences:** Two fewer runtime tools to install and update. Server code cannot use enums, namespaces or parameter properties. TypeScript stays one major version behind until lint tooling catches up.
+
+---
+
+## ADR-011: Real transcription — Web Speech first, Groq as the alternative
+
+**Status:** Accepted · 2026-11-24 (Phase 3)
+
+**Context:** Phase 3 replaces canned text with the words actually spoken, at $0 and without local models. ADR-009 put the provider choice in an env var, but trying both engines against each other is easier from the UI.
+
+**Decision:**
+
+- **Mode per recording, in the UI:** Simulated (always), Browser speech (when the browser has `SpeechRecognition`), Groq Whisper (when `GROQ_API_KEY` is set). The last choice is remembered in `localStorage`. `STT_PROVIDER` is gone.
+- **Browser speech is the default real mode:** no key, words appear while speaking. It runs entirely in the browser on Metor's own mic track, so the Metor server never receives the audio. In Chrome/Edge the audio goes to Google/Microsoft; the consent dialog says so.
+- **Groq Whisper as the alternative:** it sees whole sentences plus a vocabulary prompt, but text arrives in segments a few seconds after a pause. Segments are sized for the free-tier quota (ARCHITECTURE §4.3), and usage is charged to a file-backed ledger before each call.
+- **Technical vocabulary in three places** (`shared/vocabulary.ts`): a spelling prompt for Whisper, boosted phrases for Web Speech where supported, and a small set of corrections for common mishearings (e.g. "cube cuddle" → kubectl, "a k s" → AKS) applied to finals of both. Corrections match whole words only and are tested against ordinary sentences.
+- **Measuring accuracy in the app:** an Accuracy check panel scores the transcript against a read-aloud script (word error rate, technical-term recall, final latency p50). Results go in `docs/STT_EVALUATION.md`; no numbers are recorded until real runs exist.
+
+**Consequences:** No new dependencies. Web Speech can't be tested headlessly, so Playwright drives a fake `SpeechRecognition`. Real accuracy depends on the user's voice and mic, so the comparison needs a manual run. Groq is never called in CI.
+
+---
+
+## ADR-012: Keep the raw transcript; derive a clean one locally
+
+**Status:** Accepted · 2026-11-24 (Phase 3 review)
+
+**Context:** Real speech recognition returns fragmented, lowercase, unpunctuated text with occasional misheard terms. Fixing it with an LLM would add latency and API calls; fixing it in place would lose what was actually heard.
+
+**Decision:** Engines return raw text (term fixes moved out of the Groq adapter and Web Speech wrapper). The browser builds the clean view with deterministic rules: sentence merging by pause length, filler and repeat removal, conservative term fixes, the user's corrections, capitals and end punctuation (ARCHITECTURE §4.5). Users can add "heard as → should be" rules and edit single sentences; both affect only the clean view.
+
+**Consequences:** No added latency or cost, and every rule is unit-tested. Rules can't fix grammar or deeper mistakes, and pause thresholds are guesses until real recordings tune them. Phase 4 must read the clean view, but it can show the raw text when a question looks misheard.
+
+---
+
+## ADR-013: Answer providers — Groq by default; Claude and OpenAI only through official API keys
+
+**Status:** Accepted · 2026-11-24 (Phase 3 review, for Phase 4). Facts checked against official docs that day.
+
+**Context:** Phase 4 needs a streaming answer model at $0. The owner asked to evaluate the Claude Agent SDK and OpenAI, and whether existing subscriptions can be used.
+
+**Findings:**
+- **Groq free tier** offers `openai/gpt-oss-120b` and `openai/gpt-oss-20b`, listed at 30 requests/min and 1K requests/day (Developer-plan table; free-tier values may be lower). No payment method is needed.
+- **Claude Agent SDK** uses API-key authentication billed per token. Its overview says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." It's built to run Claude Code's agent loop and tools, which Metor doesn't need.
+- **OpenAI**: "ChatGPT and the API platform have separate billing systems." ChatGPT Pro and eligible Business plans can claim monthly API credits for a linked API organization (Plus, trials, Enterprise and Edu don't qualify). Unused credits expire monthly. After that, purchased credits are used, or requests fail with 429 `credit_balance_exhausted`.
+
+**Decision:**
+1. Groq free tier is the default answer provider.
+2. Claude (Client SDK / Messages API) and OpenAI are optional adapters, off by default, and count as `paid` for `ALLOW_PAID_PROVIDERS`. Each needs the owner's explicit choice and a follow-up ADR before it's built.
+3. Only official API-key authentication. Never consumer logins, session tokens, scraping, or anything that works around subscription or rate limits.
+4. OpenAI subscription credits could keep spending at $0 only if the owner has an eligible plan and the linked API org has no purchased credits or auto-recharge. Metor can't verify this, so the owner must check it before enabling.
+
+**Consequences:** No change to the $0 default. Answer quality starts with open-weight models on Groq, and the evaluation set (docs/ANSWER_EVALUATION.md) shows whether that's good enough before any paid option is considered.
 

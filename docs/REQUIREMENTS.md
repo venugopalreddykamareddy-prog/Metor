@@ -42,6 +42,49 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
 | FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 
+### 2.2a Question extraction (Phase 4)
+
+Testing Phase 3 showed that several questions spoken without a pause end up in one long clean paragraph. Phase 4 adds a third layer: **raw transcript → clean transcript → extracted questions**. Each layer is kept separately, and only extracted questions are answered.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-E1 | Find several questions in one continuous stretch of speech, even without punctuation | P0 |
+| FR-E2 | Classify each part as greeting/small talk, filler, statement/context, request ("walk me through…"), or question, and answer only requests and questions | P0 |
+| FR-E3 | Handle compound questions ("what is X and how does it differ from Y"), interruptions, and follow-ups that depend on earlier context | P0 |
+| FR-E4 | Keep the speaker's wording and technical terms; extraction may cut and trim, but never paraphrase or invent | P0 |
+| FR-E5 | A pause alone doesn't complete a question: wait while the sentence is open, ends on a dangling word, or more speech follows quickly | P0 |
+| FR-E6 | One answer per question: partial transcripts, repeated phrases, and recognizer repeats never trigger a second answer; a question that grows ("what is BGP… and how does it pick a path") updates the pending one | P0 |
+| FR-E7 | Show extracted questions as their own list, linked to the clean sentences they came from; the user can merge, split, dismiss, or answer one manually | P0 |
+| FR-E8 | Tell a duplicate transcript event (same words within seconds, overlapping audio) apart from a genuine repeat (asked again later, often with "again" or "let me repeat"). Duplicates are dropped; a genuine repeat brings back the earlier answer, with an option for a shorter re-explanation | P0 |
+| FR-E9 | A completed question replaces an earlier incomplete version of itself ("can you please help me to…" → "…to understand BGP communities"); the incomplete one is never answered | P0 |
+
+### 2.2b Understanding and validating the question (Phases 4–5)
+
+Before answering, Metor works out what kind of question it is and whether it rests on something true. The goal is the judgment of an experienced engineer: answer real questions directly, push back on false premises politely, and say "I don't know that one" instead of inventing.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-U1 | Classify intent: genuine technical, behavioral/scenario, follow-up, multiple questions at once, ambiguous/incomplete, off-topic or small talk, experience probe ("you've done X, right?"), possibly misheard | P0 (Phase 4) |
+| FR-U2 | Never assume a mentioned term is real. Distinguish "I don't recognize this" (could be an internal tool, a vendor product, or a mishearing) from "this is wrong". Never invent definitions, commands, products, or behavior | P0 |
+| FR-U3 | Detect incorrect technical premises and correct them politely before answering | P0 |
+| FR-U4 | Recognize impossible or unrealistic requirements (zero latency, 100% uptime) and propose realistic targets | P0 |
+| FR-U5 | Ask one short clarifying question when the question can't be answered as asked; otherwise answer with stated assumptions | P0 |
+| FR-U6 | When a term may be misheard, show what was heard (raw transcript) and the likely intended term, and answer the likely one | P0 |
+| FR-U7 | Experience probes are answered only from verified KB items; otherwise correct the premise without claiming the experience | P0 (general) / P1 (with KB, Phase 5) |
+| FR-U8 | Show a short **assessment** separately from the suggested answer when something is off. Labels: incorrect premise, unrecognized term, possible transcription error, clarification needed, unrealistic requirement, insufficient information, unverified experience, off-topic. No assessment for ordinary questions; difficulty or unusual-but-real technology is not a reason to flag | P0 |
+| FR-U9 | Say so when something can't be verified. Never claim a check against documentation happened unless it did. Verifying against official docs is optional and only from sources Metor actually has (e.g. curated notes in the KB, Phase 5) | P0 |
+| FR-U10 | Tell speech-recognition mistakes apart from real but unfamiliar technology: a near match to a known term in a technical context is a likely mishearing (offer the correction); a well-formed name with no near match is unfamiliar (say so, ask) | P0 |
+| FR-U11 | Ambiguous acronyms (AAA, AA, PCI, CSP, ARP vs ARPA…): resolve from context and say which meaning the answer assumes, or ask. Never pick a meaning silently | P0 |
+
+### 2.2c Conversation awareness (Phase 4)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-C1 | Use recent questions and answers as context; answer follow-ups without repeating earlier answers | P0 |
+| FR-C2 | Notice topic changes, interruptions, and corrections ("sorry, I meant mutual TLS") and switch cleanly | P0 |
+| FR-C3 | Don't produce answers for greetings, small talk, meeting logistics, or unfinished sentences unless a reply is useful | P0 |
+| FR-C4 | Split several questions asked together and answer them in order | P0 |
+
 ### 2.3 Answer formats
 
 | Question type | Structure |
@@ -52,7 +95,13 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | Coding | Problem restatement → approach → implementation → complexity → edge cases → tests |
 | System design | Requirements → architecture → components → scalability → reliability → security → observability → trade-offs |
 
-Answers should sound conversational (a brief natural opener, plain sentences, natural close), not like a textbook. STAR is never forced onto technical questions.
+**Answer style (FR-Q10, P0):** answers should sound like an experienced engineer talking, not a textbook.
+- Direct answer first, then the reasoning. Plain, professional, conversational English.
+- A short natural opening and closing sentence; no stock filler ("Great question!") and no repeated phrases.
+- Short (~30 s), standard (~1 min), and detailed (2–3 min) lengths (FR-Q6).
+- STAR only for behavioral and experience questions, built from verified stories (FR-K4). Never forced onto technical questions.
+- Explicit uncertainty instead of a made-up explanation: "I haven't come across that; if it's an internal tool, I'd want to know what it does first."
+- Never fabricate experience, achievements, employers, or metrics.
 
 ### 2.4 Providers and cost (ADR-009)
 
@@ -63,6 +112,8 @@ Answers should sound conversational (a brief natural opener, plain sentences, na
 | FR-P3 | Free-tier quota exhaustion pauses the feature with a clear message and reset time; **never** falls back automatically to a paid provider | P0 |
 | FR-P4 | Authentication required before any real cloud API, free or paid, including Web Speech | P0 |
 | FR-P5 | UI shows the active provider, remaining local quota, and whether data leaves the device | P0 |
+| FR-P6 | Groq free tier is the default streaming answer provider (Phase 4) | P0 |
+| FR-P7 | Claude and OpenAI are optional adapters, off by default, using only official API-key authentication. No unofficial login, no reuse of consumer subscription sessions, no working around rate or subscription limits. Enabling one needs the owner's explicit choice and an ADR (ADR-013) | P1 |
 
 ### 2.5 Knowledge base
 
@@ -97,6 +148,14 @@ Answers should sound conversational (a brief natural opener, plain sentences, na
 - Window is **visible to screen capture** like any normal window (no content-protection/hiding flags).
 - Authorized system audio capture per OS capabilities.
 
+### 2.9 Video (Phases 10–12, planned)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-V1 | Camera access with explicit consent, a visible camera indicator, and a local preview | P2 (Phase 10) |
+| FR-V2 | Coaching on eye contact, head position, posture, and lighting, computed without storing video | P2 (Phase 11) |
+| FR-V3 | Optional gaze correction and virtual-camera output, always disclosed to other participants and only where allowed | P2 (Phase 12) |
+
 ## 3. Technical coverage (prompt and question-bank scope)
 
 **SRE / DevOps / Platform / Cloud:** SLIs, SLOs, SLAs, error budgets · incident management, RCA, on-call · Linux troubleshooting · Kubernetes, AKS, EKS, Docker concepts, Helm, ArgoCD · AWS, Azure (Front Door, Key Vault, Cosmos DB, Functions) · Datadog, Prometheus, Grafana, Splunk, OpenTelemetry · Terraform, Ansible · Azure DevOps, Jenkins, GitHub Actions, Octopus Deploy · Python, Bash · distributed systems, microservices, system design, HA, DR · payment platform reliability, PCI-compliant releases · TLS/SSL certificates · load balancing · automated remediation.
@@ -123,6 +182,7 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
 | NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
+| NFR-12 | Answer quality | Measured on the evaluation set (`eval/answer-questions.json`, 113 questions; method in docs/ANSWER_EVALUATION.md): factual accuracy, hallucination rate (target 0 on fabricated terms and experience traps), false-positive flags on genuine/unusual-but-real questions (target ≤ 5%), clarification quality, naturalness, latency |
 
 ## 5. Out of scope
 

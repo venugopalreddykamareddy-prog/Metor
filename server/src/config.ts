@@ -8,6 +8,10 @@ export interface ServerConfig {
   passphraseHash: ParsedHash;
   sessionTtlMs: number;
   resumeGraceMs: number;
+  maxTranscriptionMs: number;
+  usageLedgerPath: string;
+  freeQuotaRatio: number;
+  groq: { apiKey: string; model: string } | null;
 }
 
 const DEV_CLIENT_PORT = 5173;
@@ -44,15 +48,21 @@ export function buildAllowedOrigins(env: NodeJS.ProcessEnv, port: number): Set<s
   return origins;
 }
 
-/** Only simulated providers exist until Phase 3; refuse anything else instead of silently ignoring it. */
+/** Answers stay simulated until Phase 4; refuse anything else instead of silently ignoring it. */
 function checkProviders(env: NodeJS.ProcessEnv): void {
-  for (const name of ['STT_PROVIDER', 'ANSWER_PROVIDER'] as const) {
-    const value = env[name] || 'simulated';
-    if (value !== 'simulated') throw new Error(`${name}=${value} is not available yet; use simulated`);
-  }
+  const answer = env.ANSWER_PROVIDER || 'simulated';
+  if (answer !== 'simulated') throw new Error(`ANSWER_PROVIDER=${answer} is not available yet; use simulated`);
   if ((env.ALLOW_PAID_PROVIDERS ?? 'false') !== 'false') {
     throw new Error('ALLOW_PAID_PROVIDERS must be false; Metor has no paid providers');
   }
+}
+
+function positiveNumber(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid ${name}: ${raw}`);
+  return value;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -70,5 +80,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     passphraseHash: parsePassphraseHash(env.APP_PASSPHRASE_HASH),
     sessionTtlMs: SESSION_TTL_MS,
     resumeGraceMs: RESUME_GRACE_MS,
+    maxTranscriptionMs: positiveNumber(env, 'MAX_TRANSCRIPTION_MINUTES', 90) * 60_000,
+    usageLedgerPath: env.SPEND_LEDGER_PATH || './data/usage-ledger.json',
+    freeQuotaRatio: Math.min(1, positiveNumber(env, 'FREE_QUOTA_SAFETY_RATIO', 0.8)),
+    // Transcription mode is picked per recording in the UI; Groq is offered only when a key is set.
+    groq: env.GROQ_API_KEY
+      ? { apiKey: env.GROQ_API_KEY, model: env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo' }
+      : null,
   };
 }

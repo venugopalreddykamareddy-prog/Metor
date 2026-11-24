@@ -31,14 +31,17 @@ export class Recording {
   private readonly stt: SttStream;
   private idleTimer: NodeJS.Timeout | null = null;
   private readonly statsTimer: NodeJS.Timeout;
+  private readonly maxAudioMs: number;
+  private limitReported = false;
   private stats = { frames: 0, bytes: 0, sumSquares: 0, samples: 0 };
 
-  constructor(authId: string, socket: WebSocket, createStt: SttFactory) {
+  constructor(authId: string, socket: WebSocket, createStt: SttFactory, maxAudioMs: number) {
     this.authId = authId;
     this.socket = socket;
+    this.maxAudioMs = maxAudioMs;
     this.stt = createStt({
       partial: (text) => this.emit({ type: 'transcript.partial', segmentId: this.segmentId(), text }),
-      final: (text, startMs, endMs) => {
+      final: (text, startMs, endMs, latencyMs) => {
         this.finalSeq += 1;
         const final: FinalMessage = {
           type: 'transcript.final',
@@ -47,12 +50,14 @@ export class Recording {
           text,
           startMs,
           endMs,
+          ...(latencyMs === undefined ? {} : { latencyMs }),
         };
         this.segmentCount += 1;
         this.finals.push(final);
         if (this.finals.length > MAX_REPLAY_FINALS) this.finals.shift();
         this.emit(final);
       },
+      error: (code, message) => this.emit({ type: 'error', code, message, retryable: true }),
     });
     // Reports every second, including zeros while paused, so the debug line never shows stale numbers.
     this.statsTimer = setInterval(() => this.emitStats(), STATS_INTERVAL_MS);
@@ -74,6 +79,14 @@ export class Recording {
     for (const s of samples) this.stats.sumSquares += s * s;
     this.stats.samples += samples.length;
     if (seq <= this.lastSeq) return; // duplicate resent after a reconnect
+    if ((seq + 1) * FRAME_MS > this.maxAudioMs) {
+      if (!this.limitReported) {
+        this.limitReported = true;
+        this.stt.finalizeNow();
+        this.emit({ type: 'error', code: 'limit_reached', message: 'Maximum recording length reached.', retryable: false });
+      }
+      return;
+    }
     if (seq > this.lastSeq + 1) {
       this.emit({ type: 'transcript.gap', fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
     }
@@ -154,15 +167,15 @@ export class Recordings {
   private readonly byId = new Map<string, Recording>();
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
   private readonly graceMs: number;
-  private readonly createStt: SttFactory;
+  private readonly maxAudioMs: number;
 
-  constructor(graceMs: number, createStt: SttFactory) {
+  constructor(graceMs: number, maxAudioMs: number) {
     this.graceMs = graceMs;
-    this.createStt = createStt;
+    this.maxAudioMs = maxAudioMs;
   }
 
-  start(authId: string, socket: WebSocket): Recording {
-    const recording = new Recording(authId, socket, this.createStt);
+  start(authId: string, socket: WebSocket, createStt: SttFactory): Recording {
+    const recording = new Recording(authId, socket, createStt, this.maxAudioMs);
     this.byId.set(recording.id, recording);
     return recording;
   }

@@ -1,6 +1,11 @@
-export async function isLoggedIn(): Promise<boolean> {
+export interface Me {
+  providers: { groq: boolean };
+}
+
+/** null when not logged in. */
+export async function fetchMe(): Promise<Me | null> {
   const res = await fetch('/api/me');
-  return res.ok;
+  return res.ok ? ((await res.json()) as Me) : null;
 }
 
 export async function login(passphrase: string): Promise<{ ok: true } | { ok: false; error: string }> {

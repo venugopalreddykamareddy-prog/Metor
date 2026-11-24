@@ -23,6 +23,7 @@ I won't merge features that weaken these controls.
 | Transcripts | High (may include third parties' speech) | Browser memory; IndexedDB **only after the user opts in** | **Not persisted by default.** Opt-in retention: 7 / 30 / 90 days |
 | Resumes, JDs, stories | High (PII) | Browser IndexedDB (explicit user upload) | Until user deletes |
 | AI answers | Medium | Same as transcripts | Same as transcripts |
+| Word corrections ("heard as → should be") | Low | Browser `localStorage` | Until removed in the UI |
 | API keys (`GROQ_API_KEY`, `GEMINI_API_KEY`) | Critical | Server env vars / Codespaces secrets only | — |
 | Auth passphrase | Critical | Server env var, stored as a scrypt hash only | — |
 | Spend ledger | Low (counts, quota units, and cost estimates only) | Server file `data/spend-ledger.json` (gitignored) | 90 days of daily totals |
@@ -35,9 +36,9 @@ I won't merge features that weaken these controls.
 | Provider | What it receives | Policy summary | Rule in Metor |
 |---|---|---|---|
 | Simulated | Nothing | — | Default for dev, CI, demos |
-| Groq (free tier) | Audio segments; prompts incl. KB excerpts and transcript | No retention of inference data by default; may log up to 30 days for reliability/abuse; Zero Data Retention toggle available. Training use not stated — TODO(verify). | Default real provider. **Enable ZDR** in Groq Data Controls before use. |
+| Groq (free tier) | Speech segments (Phase 3); prompts incl. KB excerpts and transcript (Phase 4+) | No retention of inference data by default; may log up to 30 days for reliability/abuse; Zero Data Retention toggle available. Training use not stated — TODO(verify). | Default real provider. **Enable ZDR** in Groq Data Controls before use. |
 | Gemini (free tier) | Prompts and transcript only | Unpaid-service content is used to improve Google products and may be read by human reviewers; terms say not to submit sensitive, confidential, or personal information. EEA/CH/UK end users require paid services. | Optional. Requires `GEMINI_FREE_TIER_DATA_ACK=true` (data terms and region rule). Do not use if you are in the EEA, Switzerland, or the UK. **KB/resume content is never sent**; live meeting/interview modes refused; practice with general questions only. |
-| Web Speech API (browser) | Microphone or captured-tab audio | Processed by the browser vendor's speech service in server-based mode; vendor policy applies — TODO(verify) for Chrome. On-device mode not used. | Optional. Login required; disclosure in settings that audio goes to the browser vendor. |
+| Web Speech API (browser) | Microphone audio | Chrome and Edge process it on Google or Microsoft servers under their policies (TODO(verify) current Chrome policy text). The Metor server never receives it. On-device mode not used. | Offered only after login; the consent dialog says where audio goes. |
 | Paid providers | — | — | Disabled (`ALLOW_PAID_PROVIDERS=false`). None implemented in MVP; each needs an ADR and a policy row here. |
 
 ### 2.1 Retention rules
