@@ -61,7 +61,9 @@ async function connect(app: FastifyInstance, cookie: string) {
     for (;;) {
       const found = messages.find(match);
       if (found) return found;
-      if (Date.now() > deadline) throw new Error(`timed out; got ${messages.map((m) => m.type).join(', ')}`);
+      if (Date.now() > deadline) {
+        throw new Error(`timed out; got ${messages.map((m) => (m.type === 'error' ? `error:${m.code}` : m.type)).join(', ')}`);
+      }
       await new Promise((r) => setTimeout(r, 10));
     }
   };
@@ -289,7 +291,7 @@ describe('recording', () => {
         return Response.json({ segments: [{ text: ' check b g p on the router', no_speech_prob: 0.02 }] });
       }) as unknown as typeof fetch;
       const app = await makeApp(
-        { groq: { apiKey: 'test', model: 'whisper-large-v3-turbo' }, usageLedgerPath: join(dir, 'l.json'), maxTranscriptionMs: 6000 },
+        { groq: { apiKey: 'test', model: 'whisper-large-v3-turbo' }, usageLedgerPath: join(dir, 'l.json'), maxTranscriptionMs: 4000 },
         undefined,
         fakeGroq,
       );
@@ -309,7 +311,8 @@ describe('recording', () => {
       expect(final).toMatchObject({ text: 'check BGP on the router', finalSeq: 1, latencyMs: expect.any(Number) });
       expect(uploads).toHaveLength(1);
 
-      for (let i = 0; i < 40; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, silence)));
+      // 45 frames in total stays under the rate limiter's 60-frame burst; the 4 s limit hits at frame 40.
+      for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, silence)));
       await conn.waitFor((m) => m.type === 'error' && m.code === 'limit_reached');
       conn.ws.terminate();
     } finally {
