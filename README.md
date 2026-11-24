@@ -1,6 +1,6 @@
 # RealTime AI Assistant
 
-> Repository: `Metor` · Status: **Phase 0 — documentation only, no application code yet**
+> Repository: `Metor` · Status: **Phase 1 — web foundation (React + Vite + Fastify WebSocket echo); no audio or AI yet**
 
 A lightweight, browser-first assistant that transcribes speech in real time, detects questions, and streams context-aware answers grounded in the user's own verified resume, projects, and STAR stories.
 
@@ -17,6 +17,7 @@ A lightweight, browser-first assistant that transcribes speech in real time, det
 
 | Document | Purpose |
 |---|---|
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Codespace setup, start/stop commands, tests, troubleshooting |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Functional and non-functional requirements, technical coverage |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, audio pipeline, AI engine, API, performance, cost, storage |
 | [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) | Consent, data handling, threat model, prompt-injection defenses |
@@ -36,4 +37,13 @@ A lightweight, browser-first assistant that transcribes speech in real time, det
 
 ## Getting started
 
-Application setup instructions will be added in Phase 1 (`docs/DEVELOPMENT.md`). No API key is needed to start: the app runs in simulated mode by default. Real providers (from Phase 3) are configured through Codespaces secrets; see [.env.example](.env.example) for the variable names. Never commit `.env`.
+Open the repo in a **2-core GitHub Codespace**; dependencies install automatically. Then:
+
+```bash
+pnpm dev      # start client + server; open the forwarded port 5173 from the Ports tab
+              # stop with Ctrl+C
+pnpm lint && pnpm test && pnpm build
+pnpm start    # serve the production build on one port; stop with Ctrl+C
+```
+
+Full instructions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). No API key is needed; real providers (from Phase 3) are configured through Codespaces secrets ([.env.example](.env.example) lists the names). Never commit `.env`.
