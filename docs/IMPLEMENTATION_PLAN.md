@@ -174,7 +174,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 3 — Real transcription 🔍 (in review, PR #5)
+## Phase 3 — Real transcription ✅ (merged, PR #5; accuracy not yet measured)
 
 **Objective:** Show the words actually spoken. Browser speech (Web Speech API) first, Groq Whisper free tier as the alternative, simulated kept for tests (ADR-011).
 
@@ -208,7 +208,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
-**Entry gate:** Phase 3 merged, and Browser speech measured on the accuracy script (docs/STT_EVALUATION.md).
+**Entry gate:** Phase 3 merged. ✅ (The owner chose to merge before the accuracy run; it moved into the acceptance list below.)
 
 **Key tasks**
 - **Question extraction** (§5.2, FR-E1–E7): split clean sentences into greeting / filler / statement / request / question parts using boundary cues that don't need punctuation; keep compound questions whole; drop abandoned questions after "let me rephrase"; completion rules beyond pauses (closed sentence, no dangling word, debounce); one answer per question, with growing questions updating the pending one; "Extracted questions" list with answer, dismiss, merge, and split.
@@ -221,6 +221,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - Evaluation runner over `eval/answer-questions.json` (simulated in CI; manual free-tier run).
 
 **Acceptance**
+- Carried from Phase 3: Browser speech (and Groq, if a key is set) measured on the accuracy script; word error rate and term recall recorded in docs/STT_EVALUATION.md.
 - 0 duplicate requests in the test script; never more than one LLM request per detected question.
 - Extraction fixture (`eval/question-extraction.json`): the right questions, word for word, in ≥ 90% of cases; no answer for filler-only and incomplete cases (unit tests).
 - Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…") are extracted as questions.

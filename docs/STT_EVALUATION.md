@@ -22,7 +22,7 @@ The script has 10 sentences and 33 technical terms. It can be edited in the pane
 
 ## Results
 
-Only the owner's first manual check so far; the accuracy script hasn't been run. Real runs need a real voice and mic, which CI and the Codespace can't provide.
+**Status when Phase 3 merged (2026-11-24):** finalization latency measured three times by the owner (below). **Accuracy (word error rate, term recall) has not been measured for either mode, and Groq transcription has not been tried live.** These stay open and are now part of Phase 4's acceptance list. Real runs need a real voice and mic, which CI and the Codespace can't provide.
 
 | Date | Mode | Browser / mic | WER raw | WER clean | Terms raw | Terms clean | Final latency p50 | Notes |
 |---|---|---|---|---|---|---|---|---|
