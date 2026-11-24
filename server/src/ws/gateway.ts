@@ -3,6 +3,7 @@ import type { WebSocket } from '@fastify/websocket';
 import { decodeAudioFrame, parseClientMessage, type ErrorCode } from '../../../shared/messages.ts';
 import { readSessionCookie } from '../auth/routes.ts';
 import type { AuthSessions } from '../auth/sessions.ts';
+import { AnswerSession, type AnswerDeps } from '../answer/engine.ts';
 import type { SttFactory } from '../stt/types.ts';
 import { send, type Recording, type Recordings } from './recording.ts';
 
@@ -16,6 +17,7 @@ export interface GatewayOptions {
   recordings: Recordings;
   /** Server-side transcription modes; `groq` is present only when GROQ_API_KEY is set. */
   stt: { simulated: SttFactory; groq?: SttFactory };
+  answers: AnswerDeps;
 }
 
 function sendError(socket: WebSocket, code: ErrorCode, message: string, retryable = false): void {
@@ -63,6 +65,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
       opts.sessions.addSocket(authId, socket);
       const allowFrame = frameLimiter();
       let recording: Recording | null = null;
+      const answers = new AnswerSession(opts.answers, (body) => send(socket, body));
 
       socket.on('message', (data, isBinary) => {
         const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
@@ -100,6 +103,12 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
             if (!recording) return sendError(socket, 'session_expired', 'recording session is gone');
             request.log.info({ sessionId: recording.id }, 'recording resumed');
             break;
+          case 'answer.request':
+            void answers.handle(msg);
+            break;
+          case 'answer.cancel':
+            answers.cancel(msg.questionId);
+            break;
           case 'session.stop':
             if (!recording) return;
             recording.stop();
@@ -111,6 +120,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
       });
 
       socket.on('close', (code) => {
+        answers.close();
         if (!recording) return;
         request.log.info({ sessionId: recording.id, code }, 'recording disconnected');
         opts.recordings.disconnected(recording, socket);

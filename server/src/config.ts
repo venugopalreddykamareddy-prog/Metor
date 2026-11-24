@@ -9,6 +9,7 @@ export interface ServerConfig {
   sessionTtlMs: number;
   resumeGraceMs: number;
   maxTranscriptionMs: number;
+  maxAnswersPerSession: number;
   usageLedgerPath: string;
   freeQuotaRatio: number;
   groq: { apiKey: string; model: string } | null;
@@ -48,10 +49,8 @@ export function buildAllowedOrigins(env: NodeJS.ProcessEnv, port: number): Set<s
   return origins;
 }
 
-/** Answers stay simulated until Phase 4; refuse anything else instead of silently ignoring it. */
+/** Metor has no paid providers; refuse a config that asks for them instead of silently ignoring it. */
 function checkProviders(env: NodeJS.ProcessEnv): void {
-  const answer = env.ANSWER_PROVIDER || 'simulated';
-  if (answer !== 'simulated') throw new Error(`ANSWER_PROVIDER=${answer} is not available yet; use simulated`);
   if ((env.ALLOW_PAID_PROVIDERS ?? 'false') !== 'false') {
     throw new Error('ALLOW_PAID_PROVIDERS must be false; Metor has no paid providers');
   }
@@ -81,9 +80,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     sessionTtlMs: SESSION_TTL_MS,
     resumeGraceMs: RESUME_GRACE_MS,
     maxTranscriptionMs: positiveNumber(env, 'MAX_TRANSCRIPTION_MINUTES', 90) * 60_000,
+    maxAnswersPerSession: positiveNumber(env, 'MAX_ANSWERS_PER_SESSION', 100),
     usageLedgerPath: env.SPEND_LEDGER_PATH || './data/usage-ledger.json',
     freeQuotaRatio: Math.min(1, positiveNumber(env, 'FREE_QUOTA_SAFETY_RATIO', 0.8)),
-    // Transcription mode is picked per recording in the UI; Groq is offered only when a key is set.
+    // Transcription mode and answer engine are picked in the UI; Groq is offered only when a key is set.
     groq: env.GROQ_API_KEY
       ? { apiKey: env.GROQ_API_KEY, model: env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo' }
       : null,

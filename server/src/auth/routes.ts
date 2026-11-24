@@ -23,8 +23,10 @@ interface AuthRouteOptions {
   sessions: AuthSessions;
   sessionTtlMs: number;
   allowedOrigins: ReadonlySet<string>;
-  /** Reported by /api/me so the UI only offers configured transcription modes. */
+  /** Reported by /api/me so the UI only offers configured transcription modes and answer engines. */
   providers: { groq: boolean };
+  /** Free-tier usage for /api/usage. */
+  usage: () => unknown;
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRouteOptions): Promise<void> {
@@ -85,4 +87,5 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRouteOp
   });
 
   app.get('/api/me', { preHandler: requireSession }, async () => ({ authenticated: true, providers: opts.providers }));
+  app.get('/api/usage', { preHandler: requireSession }, async () => opts.usage());
 }

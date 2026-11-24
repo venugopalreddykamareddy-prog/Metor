@@ -1,9 +1,10 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+/** `units` is whatever the provider meters besides requests: audio seconds for Whisper, tokens for chat. */
 export interface Usage {
   requests: number;
-  audioSeconds: number;
+  units: number;
 }
 
 export interface QuotaLimits {
@@ -16,7 +17,7 @@ const MINUTE = 60_000;
 const DAY_MINUTES = 24 * 60;
 
 /**
- * Free-tier usage per provider, in one-minute buckets for the last 24 h, saved to a JSON file so
+ * Free-tier usage for one metered resource, in one-minute buckets for the last 24 h, saved to a JSON file so
  * limits survive restarts (ARCHITECTURE §11.1). Rolling windows are conservative whatever time
  * the provider resets its counters. One server process only.
  */
@@ -54,6 +55,11 @@ export class UsageLedger {
    * Usage is charged before the request so a crash or timeout can never undercount.
    */
   reserve(usage: Usage): boolean {
+    return this.reserveTicket(usage) !== null;
+  }
+
+  /** Like reserve(), but returns the bucket it was charged to so settle() can correct it later. */
+  reserveTicket(usage: Usage): number | null {
     this.prune();
     const minute = Math.floor(this.now() / MINUTE);
     const windows: [number, Usage][] = [
@@ -63,15 +69,26 @@ export class UsageLedger {
     ];
     for (const [minutes, limit] of windows) {
       const used = this.sum(minute - minutes + 1);
-      if (used.requests + usage.requests > limit.requests) return false;
-      if (used.audioSeconds + usage.audioSeconds > limit.audioSeconds) return false;
+      if (used.requests + usage.requests > limit.requests) return null;
+      if (used.units + usage.units > limit.units) return null;
     }
-    const bucket = this.buckets.get(minute) ?? { requests: 0, audioSeconds: 0 };
+    const bucket = this.buckets.get(minute) ?? { requests: 0, units: 0 };
     bucket.requests += usage.requests;
-    bucket.audioSeconds += usage.audioSeconds;
+    bucket.units += usage.units;
     this.buckets.set(minute, bucket);
     this.save();
-    return true;
+    return minute;
+  }
+
+  /**
+   * Replaces a reservation's estimate with the provider's reported usage. Only call this when the
+   * provider actually reported usage; otherwise the conservative reservation stands.
+   */
+  settle(ticket: number, reservedUnits: number, actualUnits: number): void {
+    const bucket = this.buckets.get(ticket);
+    if (!bucket) return; // older than 24 h already
+    bucket.units = Math.max(0, bucket.units + actualUnits - reservedUnits);
+    this.save();
   }
 
   /** Usage in the last `minutes` minutes. */
@@ -85,11 +102,11 @@ export class UsageLedger {
   }
 
   private sum(fromMinute: number): Usage {
-    const total = { requests: 0, audioSeconds: 0 };
+    const total = { requests: 0, units: 0 };
     for (const [minute, usage] of this.buckets) {
       if (minute >= fromMinute) {
         total.requests += usage.requests;
-        total.audioSeconds += usage.audioSeconds;
+        total.units += usage.units;
       }
     }
     return total;

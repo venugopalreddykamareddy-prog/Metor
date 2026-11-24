@@ -92,7 +92,7 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
         sink.partial('');
         return;
       }
-      if (!opts.ledger.reserve({ requests: 1, audioSeconds: Math.max(BILLED_MIN_SECONDS, Math.ceil(durationS)) })) {
+      if (!opts.ledger.reserve({ requests: 1, units: Math.max(BILLED_MIN_SECONDS, Math.ceil(durationS)) })) {
         sink.partial('');
         sink.error('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Switch to Simulated or Browser speech, or wait.");
         return;

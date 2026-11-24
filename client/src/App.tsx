@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import { fetchMe, logout, type Me } from './api.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AnswerEngine, AnswerLength } from '../../shared/messages.ts';
+import { fetchMe, fetchUsage, logout, type Me, type Usage } from './api.ts';
+import { useAnswers, type AnswerCard } from './answers/useAnswers.ts';
+import type { DetectedQuestion } from './questions/tracker.ts';
+import { useQuestions } from './questions/useQuestions.ts';
 import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTranscript.ts';
 import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
-import { useRecorder, type TranscriptionMode } from './session/useRecorder.ts';
+import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
 import { speechRecognitionCtor } from './stt/webspeech.ts';
 import { AccuracyCheck } from './ui/AccuracyCheck.tsx';
+import { AnswersPanel } from './ui/AnswersPanel.tsx';
+import { QuestionsPanel } from './ui/QuestionsPanel.tsx';
 import { ConsentDialog } from './ui/ConsentDialog.tsx';
 import { Login } from './ui/Login.tsx';
 import { StatusBar } from './ui/StatusBar.tsx';
@@ -33,15 +39,33 @@ const MODE_LABEL: Record<TranscriptionMode, string> = {
   webspeech: 'Browser speech',
   groq: 'Groq Whisper',
 };
-const MODE_KEY = 'metor.mode';
+const ENGINE_LABEL: Record<AnswerEngine, string> = {
+  simulated: 'Simulated',
+  'groq-120b': 'Groq GPT-OSS 120B',
+  'groq-20b': 'Groq GPT-OSS 20B',
+};
 
-function savedMode(): TranscriptionMode | null {
+function load(key: string): string | null {
   try {
-    const value = localStorage.getItem(MODE_KEY);
-    return value === 'simulated' || value === 'webspeech' || value === 'groq' ? value : null;
+    return localStorage.getItem(`metor.${key}`);
   } catch {
     return null;
   }
+}
+
+function save(key: string, value: string): void {
+  try {
+    localStorage.setItem(`metor.${key}`, value);
+  } catch {
+    // Private browsing etc.: the choice just isn't remembered.
+  }
+}
+
+/** A remembered choice, if it's still one of the allowed values. */
+function useSetting<T extends string>(key: string, allowed: readonly T[], fallback: T) {
+  const stored = load(key);
+  const [value, setValue] = useState<T>(allowed.includes(stored as T) ? (stored as T) : fallback);
+  return [value, (v: T) => (setValue(v), save(key, v))] as const;
 }
 
 function median(values: number[]): number {
@@ -50,15 +74,24 @@ function median(values: number[]): number {
 }
 
 function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
-  const recorder = useRecorder(onLoggedOut);
+  const answerHandler = useRef<(msg: AnswerMessage) => void>(() => {});
+  const recorder = useRecorder(onLoggedOut, (msg) => answerHandler.current(msg));
+  const answers = useAnswers(recorder.send);
+  answerHandler.current = answers.handleMessage;
+
   const available: TranscriptionMode[] = [
     'simulated',
     ...(speechRecognitionCtor() ? (['webspeech'] as const) : []),
     ...(me.providers.groq ? (['groq'] as const) : []),
   ];
-  const saved = savedMode();
-  const [mode, setMode] = useState<TranscriptionMode>(saved && available.includes(saved) ? saved : 'simulated');
+  const engines: AnswerEngine[] = me.providers.groq ? ['groq-120b', 'groq-20b', 'simulated'] : ['simulated'];
+  const [mode, setMode] = useSetting<TranscriptionMode>('mode', available, 'simulated');
+  const [engine, setEngine] = useSetting<AnswerEngine>('engine', engines, engines[0] ?? 'simulated');
+  const [length, setLength] = useSetting<AnswerLength>('length', ['short', 'standard', 'detailed'], 'standard');
+  const [autoAnswer, setAutoAnswer] = useSetting<'on' | 'off'>('autoAnswer', ['on', 'off'], 'on');
+  const [autoScroll, setAutoScroll] = useState(true);
   const [askingConsent, setAskingConsent] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const corrections = useCorrections();
   // Hand edits of single sentences, for the current recording only.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -72,19 +105,35 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       }),
     [recorder.transcript, corrections.replacements, overrides],
   );
+
+  const questions = useQuestions(clean, autoAnswer === 'on', (q) => answers.ask(q, engine, length));
+  const regenerate = (card: AnswerCard) => {
+    const q: DetectedQuestion = {
+      id: card.sourceId,
+      text: card.question,
+      kind: 'question',
+      status: 'answered',
+      statements: [],
+      spokenAt: Date.now(),
+      firstSeenAt: Date.now(),
+    };
+    answers.ask(q, engine, length);
+  };
+
+  // Free-tier usage, refreshed now and then and after each finished answer.
+  const doneCount = answers.cards.filter((c) => c.status === 'done').length;
+  useEffect(() => {
+    if (!me.providers.groq) return;
+    const refresh = () => void fetchUsage().then(setUsage, () => setUsage(null));
+    refresh();
+    const timer = setInterval(refresh, 30_000);
+    return () => clearInterval(timer);
+  }, [me.providers.groq, doneCount]);
   const micOpen = phase === 'recording' || phase === 'paused';
   const activeMode = recorder.mode ?? mode;
   // Web Speech doesn't need the WebSocket; server modes do.
   const canStart = phase === 'idle' && (mode === 'webspeech' || connection === 'connected');
 
-  const chooseMode = (value: TranscriptionMode) => {
-    setMode(value);
-    try {
-      localStorage.setItem(MODE_KEY, value);
-    } catch {
-      // Private browsing etc.: the choice just isn't remembered.
-    }
-  };
 
   const onLogout = async () => {
     recorder.stop();
@@ -108,7 +157,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       <div className="controls">
         <label className="mode">
           Transcription
-          <select value={mode} onChange={(e) => chooseMode(e.target.value as TranscriptionMode)} disabled={phase !== 'idle'}>
+          <select value={mode} onChange={(e) => setMode(e.target.value as TranscriptionMode)} disabled={phase !== 'idle'}>
             {available.map((m) => (
               <option key={m} value={m}>
                 {MODE_LABEL[m]}
@@ -154,13 +203,52 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
               }`}
           {latencies.length > 0 &&
             ` · final latency p50 ${(median(latencies) / 1000).toFixed(2)} s (n=${latencies.length})`}
+          {answers.latencies.length > 0 &&
+            ` · speech end → first answer word p50 ${(median(answers.latencies) / 1000).toFixed(2)} s (n=${answers.latencies.length})`}
         </p>
       )}
 
+      <div className="settings" aria-label="Answer settings">
+        <label>
+          Answers
+          <select value={engine} onChange={(e) => setEngine(e.target.value as AnswerEngine)}>
+            {engines.map((e) => (
+              <option key={e} value={e}>
+                {ENGINE_LABEL[e]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Length
+          <select value={length} onChange={(e) => setLength(e.target.value as AnswerLength)}>
+            <option value="short">Short (~30 s)</option>
+            <option value="standard">Standard (~1 min)</option>
+            <option value="detailed">Detailed (2–3 min)</option>
+          </select>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={autoAnswer === 'on'} onChange={(e) => setAutoAnswer(e.target.checked ? 'on' : 'off')} />
+          Answer automatically
+        </label>
+        <button type="button" aria-pressed={!autoScroll} onClick={() => setAutoScroll(!autoScroll)}>
+          {autoScroll ? 'Pause scrolling' : 'Resume scrolling'}
+        </button>
+        {engine !== 'simulated' && <span className="muted">Questions and recent answers are sent to Groq (free tier).</span>}
+        {usage?.groq && (
+          <span className="muted" data-testid="usage">
+            Groq answers today: {usage.groq.answers.lastDay.requests}/{usage.groq.answers.limits.perDay.requests} requests ·{' '}
+            {Math.round(usage.groq.answers.lastDay.units / 1000)}k/{Math.round(usage.groq.answers.limits.perDay.units / 1000)}k tokens
+          </span>
+        )}
+      </div>
+
       {recorder.error && <p role="alert" className="error">{recorder.error}</p>}
 
+      <div className="workspace">
       <TranscriptPane
         transcript={recorder.transcript}
+        autoScroll={autoScroll}
         clean={clean}
         label={MODE_LABEL[activeMode]}
         replacements={corrections.replacements}
@@ -172,6 +260,15 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
         onAddCorrection={corrections.add}
         onRemoveCorrection={corrections.remove}
       />
+      <QuestionsPanel
+        questions={questions.questions}
+        onAnswer={questions.answer}
+        onDismiss={questions.dismiss}
+        onMerge={questions.mergeWithPrevious}
+        onAsk={questions.ask}
+      />
+      <AnswersPanel cards={answers.cards} autoScroll={autoScroll} onCancel={answers.cancel} onRegenerate={regenerate} />
+      </div>
 
       <AccuracyCheck
         rawText={transcriptText(recorder.transcript)}
@@ -187,6 +284,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           onConfirm={() => {
             setAskingConsent(false);
             setOverrides({});
+            questions.reset(); // sentence keys restart with each recording
             void recorder.start(mode);
           }}
         />

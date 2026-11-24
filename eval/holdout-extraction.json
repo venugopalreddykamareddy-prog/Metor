@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "description": "Holdout set for question extraction. Written separately from the rules and never used to tune them; results are reported as measured.",
+  "cases": [
+    {
+      "id": "hext-01",
+      "input": "good morning nice to meet you so what does an sre team own in your view",
+      "expected": {
+        "questions": [
+          {
+            "text": "what does an sre team own in your view",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Greeting then question."
+    },
+    {
+      "id": "hext-02",
+      "input": "how do you handle secrets rotation how often do you rotate database credentials",
+      "expected": {
+        "questions": [
+          {
+            "text": "how do you handle secrets rotation",
+            "kind": "question"
+          },
+          {
+            "text": "how often do you rotate database credentials",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Two related but separate questions."
+    },
+    {
+      "id": "hext-03",
+      "input": "walk me through how a packet gets from a pod to the internet",
+      "expected": {
+        "questions": [
+          {
+            "text": "walk me through how a packet gets from a pod to the internet",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "Request with an embedded 'how'."
+    },
+    {
+      "id": "hext-04",
+      "input": "we had a cert expire last month and it took down checkout what would you put in place so it never happens again",
+      "expected": {
+        "questions": [
+          {
+            "text": "what would you put in place so it never happens again",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Context statement, then question."
+    },
+    {
+      "id": "hext-05",
+      "input": "could you explain what a service mesh is and when it is overkill",
+      "expected": {
+        "questions": [
+          {
+            "text": "could you explain what a service mesh is and when it is overkill",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Compound request; 'it' refers back."
+    },
+    {
+      "id": "hext-06",
+      "input": "what is the difference between a vpc endpoint and a nat gateway",
+      "expected": {
+        "questions": [
+          {
+            "text": "what is the difference between a vpc endpoint and a nat gateway",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "'and' inside a noun phrase."
+    },
+    {
+      "id": "hext-07",
+      "input": "i would like to ask about your",
+      "expected": {
+        "questions": [],
+        "incomplete": true
+      },
+      "note": "Trails off on 'your'."
+    },
+    {
+      "id": "hext-08",
+      "input": "okay perfect thanks",
+      "expected": {
+        "questions": []
+      },
+      "note": "Acknowledgement only."
+    },
+    {
+      "id": "hext-09",
+      "input": "describe your ideal on call rotation then tell me how you would measure whether it is working",
+      "expected": {
+        "questions": [
+          {
+            "text": "describe your ideal on call rotation",
+            "kind": "request"
+          },
+          {
+            "text": "tell me how you would measure whether it is working",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "Two requests joined by 'then'."
+    },
+    {
+      "id": "hext-10",
+      "input": "is there a difference between horizontal and vertical pod autoscaling",
+      "expected": {
+        "questions": [
+          {
+            "text": "is there a difference between horizontal and vertical pod autoscaling",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Auxiliary opener at the start."
+    },
+    {
+      "id": "hext-11",
+      "input": "how would you debug slow dns lookups in kubernetes let me rephrase that how would you debug intermittent dns timeouts in kubernetes",
+      "expected": {
+        "questions": [
+          {
+            "text": "how would you debug intermittent dns timeouts in kubernetes",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Self-correction."
+    },
+    {
+      "id": "hext-12",
+      "input": "what about azure",
+      "expected": {
+        "questions": [
+          {
+            "text": "what about azure",
+            "kind": "follow_up"
+          }
+        ]
+      },
+      "note": "Short follow-up with context.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How do you handle secrets in AWS?"
+        }
+      ]
+    },
+    {
+      "id": "hext-13",
+      "input": "tell me about a project where you reduced cloud costs and what you learned from it",
+      "expected": {
+        "questions": [
+          {
+            "text": "tell me about a project where you reduced cloud costs and what you learned from it",
+            "kind": "request"
+          }
+        ]
+      },
+      "note": "Compound request with back-reference 'it'."
+    },
+    {
+      "id": "hext-14",
+      "input": "so the latency spikes every hour on the hour where would you start looking",
+      "expected": {
+        "questions": [
+          {
+            "text": "where would you start looking",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Filler + context + question."
+    },
+    {
+      "id": "hext-15",
+      "input": "can you hear me now great then how do you approach capacity planning",
+      "expected": {
+        "questions": [
+          {
+            "text": "how do you approach capacity planning",
+            "kind": "question"
+          }
+        ]
+      },
+      "note": "Audio check with 'now', filler, question."
+    }
+  ]
+}

@@ -7,6 +7,8 @@ const STICKY_PX = 40;
 
 interface Props {
   transcript: Transcript;
+  /** Off when the user paused scrolling. */
+  autoScroll: boolean;
   clean: CleanItem[];
   label: string;
   replacements: Replacement[];
@@ -25,8 +27,8 @@ export function TranscriptPane(props: Props) {
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [transcript, view]);
+    if (el && stickRef.current && props.autoScroll) el.scrollTop = el.scrollHeight;
+  }, [transcript, view, props.autoScroll]);
 
   const empty = transcript.lines.length === 0 && transcript.partial === null;
   const saveEdit = (e: FormEvent) => {

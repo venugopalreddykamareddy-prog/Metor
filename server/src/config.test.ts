@@ -23,9 +23,7 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ APP_PASSPHRASE_HASH: 'nope' })).toThrow(/malformed/);
   });
 
-  it('keeps answers simulated and refuses paid providers', () => {
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'simulated' })).not.toThrow();
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'gemini' })).toThrow(/not available yet/);
+  it('refuses paid providers', () => {
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, ALLOW_PAID_PROVIDERS: 'true' })).toThrow(/must be false/);
   });
 
@@ -38,8 +36,13 @@ describe('loadConfig', () => {
   });
 
   it('reads limits and rejects bad numbers', () => {
-    const c = loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '30', FREE_QUOTA_SAFETY_RATIO: '0.5' });
-    expect(c).toMatchObject({ maxTranscriptionMs: 30 * 60_000, freeQuotaRatio: 0.5 });
+    const c = loadConfig({
+      APP_PASSPHRASE_HASH,
+      MAX_TRANSCRIPTION_MINUTES: '30',
+      FREE_QUOTA_SAFETY_RATIO: '0.5',
+      MAX_ANSWERS_PER_SESSION: '20',
+    });
+    expect(c).toMatchObject({ maxTranscriptionMs: 30 * 60_000, freeQuotaRatio: 0.5, maxAnswersPerSession: 20 });
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '-1' })).toThrow(/Invalid/);
   });
 

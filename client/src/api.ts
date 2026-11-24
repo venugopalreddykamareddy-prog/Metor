@@ -8,6 +8,27 @@ export async function fetchMe(): Promise<Me | null> {
   return res.ok ? ((await res.json()) as Me) : null;
 }
 
+interface Window {
+  requests: number;
+  units: number;
+}
+interface Metered {
+  lastMinute: Window;
+  lastHour: Window;
+  lastDay: Window;
+  limits: { perMinute: Window; perHour: Window; perDay: Window };
+  unit: string;
+}
+export interface Usage {
+  groq: { transcription: Metered; answers: Metered } | null;
+}
+
+export async function fetchUsage(): Promise<Usage> {
+  const res = await fetch('/api/usage');
+  if (!res.ok) throw new Error(`usage: HTTP ${res.status}`);
+  return (await res.json()) as Usage;
+}
+
 export async function login(passphrase: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await fetch('/api/login', {
     method: 'POST',
