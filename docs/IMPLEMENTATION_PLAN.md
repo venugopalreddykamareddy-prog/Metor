@@ -2,7 +2,14 @@
 
 Each phase must pass review against its acceptance criteria before the next begins. Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts, verified dependencies, and commands) at the start of each phase so they reflect current API docs and what we learned.
 
-**Rollback (all phases):** each phase is developed on a branch `phase-N-<name>` and merged via PR. To roll back an unmerged phase: `git switch main && git branch -D phase-N-<name>` (deletes the local branch only). To roll back a merged phase: `git revert -m 1 <merge-commit>` (creates a new commit that undoes it; history is kept).
+**Rollback (all phases):** each phase is developed on a branch `phase-N-<name>` and merged via PR.
+
+- **Abandon an unmerged phase:** close the PR and `git switch main`. **Keep the branch** in case the work is needed later. Delete it only after verifying it is no longer needed, using `git branch -d phase-N-<name>`. Lowercase `-d` refuses to delete unmerged work; avoid `-D`, which force-deletes it.
+- **Undo a merged phase** (always creates a new commit; history is kept):
+  - Merge commit: `git revert -m 1 <merge-commit-sha>`
+  - Squash merge: `git revert <squash-commit-sha>`
+  - Rebase merge: revert each commit, newest first: `git revert <oldest-sha>^..<newest-sha>`
+- Open the revert as its own PR so CI runs on it.
 
 ---
 
@@ -17,6 +24,7 @@ Each phase must pass review against its acceptance criteria before the next begi
 **Storage impact:** < 100 KB.
 
 **Acceptance criteria**
+- [x] PR #1 review comments addressed (auth, URL credentials, spend accounting, reconnect, retention, phase mapping, devcontainer, toolchain pinning, early browser tests, rollback)
 - [ ] User has reviewed and agreed with requirements, especially scope and acceptable-use controls
 - [ ] Mermaid diagrams render on GitHub
 - [ ] No secrets in repo; `.env` is ignored (`git check-ignore .env` prints `.env`)
@@ -26,33 +34,56 @@ Each phase must pass review against its acceptance criteria before the next begi
 
 ## Phase 1 — Lightweight web application foundation
 
-**Objective:** Runnable skeleton: Vite React client + Fastify server + typed WebSocket echo, with lint, typecheck, tests, and CI.
+**Objective:** Runnable skeleton: Vite React client + Fastify server + typed WebSocket echo, with pinned toolchain, devcontainer, lint, typecheck, tests, a browser smoke test, and CI.
 
 **Requirements:** NFR-8, NFR-10 baseline; AGENTS.md layout.
 
 **Files to create**
 ```
-package.json, pnpm-lock.yaml, tsconfig.json, tsconfig.node.json (if needed)
+.devcontainer/devcontainer.json
+package.json (with "packageManager" and "engines"), pnpm-lock.yaml, .nvmrc
+tsconfig.json, tsconfig.node.json (if needed)
 vite.config.ts, index.html (or client/index.html)
 client/src/main.tsx, client/src/App.tsx, client/src/net/wsClient.ts
 server/src/index.ts, server/src/ws/gateway.ts, server/src/config.ts
 shared/messages.ts
-eslint config, vitest config
+eslint config, vitest config, playwright.config.ts, e2e/smoke.spec.ts
 .github/workflows/ci.yml
+docs/DEVELOPMENT.md (Codespace startup + secrets setup; short)
 ```
+
+**Toolchain pinning**
+- `.nvmrc` → `24`. `package.json` `"engines": { "node": ">=24 <25" }`.
+- `"packageManager": "pnpm@<exact version>"`, set to the pnpm already installed in the Codespace by running `corepack use pnpm@$(pnpm --version)`.
+- CI sets up Node with `actions/setup-node` using `node-version-file: .nvmrc`, and pnpm with `pnpm/action-setup`, which reads `packageManager`. Then `pnpm install --frozen-lockfile`.
+
+**Devcontainer (minimal)**
+- Base image: an official Dev Containers Node 24 image. **TODO(verify)** the exact tag on mcr.microsoft.com before writing it.
+- `postCreateCommand`: `corepack enable && pnpm install`.
+- `forwardPorts: [5173]` (Vite client; it proxies `/api` and `/ws` to the server).
+- The server binds to `127.0.0.1:8787` and is **not** forwarded: `portsAttributes` `"8787": { "onAutoForward": "ignore" }`.
+- Codespaces ports are private by default. Keep them private and verify with `gh codespace ports`. Port visibility is a Codespaces setting, not a devcontainer.json field. **TODO(verify)** against current docs.
+- No extensions beyond ESLint, if any.
+
+**Codespaces secrets (from Phase 3; documented now in docs/DEVELOPMENT.md)**
+- GitHub → Settings → Codespaces → Secrets → New secret: `OPENAI_API_KEY`, `APP_PASSPHRASE_HASH`, scoped to this repository only.
+- Secrets appear as environment variables in new or rebuilt Codespaces. A local `.env` is not needed.
 
 **Dependencies (expected; Copilot must confirm current versions via `pnpm add`, not hand-written versions)**
 - Runtime: `react`, `react-dom`, `fastify`, `@fastify/websocket`, `@fastify/static` (serve built client), a validation lib (`zod`) or Fastify JSON Schema
-- Dev: `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react`, `@types/react-dom`, `vitest`, `eslint` + `typescript-eslint`, `tsx` (run server TS), `concurrently` (or a tiny script) for `pnpm dev`
+- Dev: `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react`, `@types/react-dom`, `vitest`, `eslint` + `typescript-eslint`, `tsx` (run server TS in dev), `concurrently` (or a tiny script) for `pnpm dev`, `@playwright/test` (Chromium only)
 
-**Estimated storage:** ~250–400 MB `node_modules`.
+**Estimated storage:** ~250–400 MB `node_modules` + Playwright Chromium (~150–400 MB; measure with `du -sh ~/.cache/ms-playwright`). All of this is in the Codespace; nothing goes on the Mac.
 
 **Commands**
 ```bash
 git switch -c phase-1-foundation       # creates a branch (modifies git state, safe)
 pnpm install                           # installs dependencies (writes node_modules/)
-pnpm dev                               # client on :5173, server on :8787
+pnpm exec playwright install chromium  # downloads browser for smoke test (~150–400 MB)
+pnpm dev                               # client on :5173, server on 127.0.0.1:8787
 pnpm lint && pnpm test && pnpm build
+pnpm start                             # serves built client + API from one port
+pnpm test:e2e                          # browser smoke test
 ```
 
 **Copilot Agent Mode prompt**
@@ -70,11 +101,25 @@ Create a single-package TypeScript project (pnpm, Node 24, "type": "module"):
 - shared/messages.ts: discriminated-union message types + runtime validation.
 - client/src/net/wsClient.ts: typed client with exponential-backoff reconnect (0.5s → 8s, jitter).
 - Vite dev server proxies /ws and /api to the Fastify server so the browser uses one origin.
-- Scripts: dev (client + server together), build, start, test (vitest), lint (eslint + tsc --noEmit).
+- Server listens on 127.0.0.1 only. The WebSocket URL is same-origin (`/ws`), with no tokens in the query string.
+- Toolchain: .nvmrc = 24; package.json "engines" node >=24 <25; set "packageManager" with
+  `corepack use pnpm@$(pnpm --version)`.
+- .devcontainer/devcontainer.json: official Node 24 Dev Containers image (verify the tag exists
+  before writing it), postCreateCommand "corepack enable && pnpm install", forwardPorts [5173],
+  portsAttributes {"8787": {"onAutoForward": "ignore"}}.
+- Scripts: dev (client + server together), build (client with Vite + server compiled to dist/),
+  start (serves built client via @fastify/static + API + WS on one port), test (vitest),
+  test:e2e (playwright), lint (eslint + tsc --noEmit).
 - Unit tests: message validation (valid/invalid), reconnect backoff calculation.
-- .github/workflows/ci.yml: on push/PR, pnpm install --frozen-lockfile, lint, test, build.
+- e2e/smoke.spec.ts (Playwright, Chromium only): against `pnpm start` (built app), load the page,
+  assert status becomes "Connected", send a message, assert the echo appears.
+- .github/workflows/ci.yml: actions/setup-node with node-version-file .nvmrc, pnpm/action-setup
+  (reads packageManager), pnpm install --frozen-lockfile, lint, test, build, then install
+  Playwright Chromium and run test:e2e against the built app.
+- docs/DEVELOPMENT.md: how to start the Codespace, run the app, keep ports private, and add
+  Codespaces secrets. Keep it short.
 Add dependencies with `pnpm add` so versions are resolved, never hand-written.
-TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio yet.
+TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or auth yet.
 ```
 
 **Acceptance criteria**
@@ -82,34 +127,42 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 - [ ] Typing a message shows the echo; sending invalid JSON returns an error message
 - [ ] Killing the server shows "Disconnected"; restarting reconnects automatically
 - [ ] `curl localhost:8787/healthz` → `{"status":"ok"}`
-- [ ] `pnpm lint`, `pnpm test`, `pnpm build` pass locally and in CI
-- [ ] No API key referenced anywhere in `client/`
+- [ ] `pnpm build && pnpm start` serves the built client, and WS works on the single port
+- [ ] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally and in CI
+- [ ] CI uses the Node version from `.nvmrc` and the pnpm version from `packageManager`
+- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private
+- [ ] No API key referenced anywhere in `client/`; no credentials in any URL
 
-**Risks:** Codespaces port forwarding and WS through the Vite proxy — verify early. Over-scaffolding by Copilot — reject extra libraries.
+**Risks:** Codespaces port forwarding and WS through the Vite proxy — verify early. Over-scaffolding by Copilot — reject extra libraries. Devcontainer changes require a Codespace rebuild (a few minutes).
 
 ---
 
 ## Phase 2 — Microphone capture and simulated transcription
 
-**Objective:** Real mic capture with consent flow and indicator; audio frames streamed to server; server returns **simulated** partial/final transcripts. Zero API cost.
+**Objective:** Real mic capture with consent flow and indicator; audio frames streamed to server; server returns **simulated** partial/final transcripts; authentication and resume protocol in place **before** any paid provider exists. Zero API cost.
 
-**Requirements:** FR-A1–A5, session lifecycle (ARCHITECTURE §7), WS messages (§6.2).
+**Requirements:** FR-A1–A5, FR-S1 (in-memory session), NFR-11, session lifecycle (ARCHITECTURE §7), WS messages (§6.2), resume semantics (§6.3), authentication (SECURITY_PRIVACY §3.1).
 
-**Files:** `client/src/audio/capture.ts`, `client/src/audio/pcm-worklet.ts`, `client/src/ui/RecordingIndicator.tsx`, `client/src/ui/TranscriptPane.tsx`, `client/src/ui/ConsentDialog.tsx`, `server/src/stt/types.ts` (adapter interface), `server/src/stt/simulated.ts`, tests.
+**Files:** `client/src/audio/capture.ts`, `client/src/audio/pcm-worklet.ts`, `client/src/ui/RecordingIndicator.tsx`, `client/src/ui/TranscriptPane.tsx`, `client/src/ui/ConsentDialog.tsx`, `client/src/ui/Login.tsx`, `server/src/auth/` (login, cookie sessions), `server/src/ws/session.ts` (session registry, grace period, seq tracking), `server/src/stt/types.ts` (adapter interface), `server/src/stt/simulated.ts`, `scripts/hash-passphrase.ts`, unit + integration + e2e tests.
 
-**Dependencies:** none new expected (Web Audio API, AudioWorklet are built in).
+**Dependencies:** none new expected (Web Audio API, AudioWorklet, Node `crypto` scrypt are built in). `@fastify/cookie` if needed; justify per AGENTS.md.
 
 **Storage impact:** negligible.
 
 **Acceptance criteria**
+- [ ] Login required. Unauthorized HTTP gets 401, WS without cookie or with a wrong Origin is rejected, brute force gets 429 (integration tests)
 - [ ] Start shows consent dialog → browser permission prompt → indicator + timer visible
-- [ ] Audio frames reach the server (debug counter of bytes/sec shown in dev panel)
+- [ ] Audio frames reach the server with sequence numbers (debug counter of bytes/sec in dev panel)
 - [ ] Simulated partials appear in grey and are replaced by finals
 - [ ] Pause stops sending audio; Stop releases the mic (browser mic icon disappears)
-- [ ] Denying permission shows a clear error, returns to Idle
-- [ ] Unit tests: STT adapter interface, simulated transcript sequencing, PCM conversion
+- [ ] Denying permission shows a clear error and returns to Idle
+- [ ] Every resume test listed in ARCHITECTURE §6.3 passes
+- [ ] Terminal failure stops all media tracks and hides the indicator
+- [ ] Transcript is held in memory only; nothing is written to IndexedDB
+- [ ] Unit tests: STT adapter interface, simulated transcript sequencing, PCM conversion, frame seq encoding
+- [ ] **E2E (Playwright, Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`):** login → start → simulated transcript appears → stop → assert tracks ended and indicator hidden; permission-denied path shows error
 
-**Risks:** AudioWorklet loading under Vite; sample-rate differences across devices.
+**Risks:** AudioWorklet loading under Vite; sample-rate differences across devices; cookie `Secure` flag on non-HTTPS localhost in tests (Chromium treats localhost as secure; verify).
 
 ---
 
@@ -117,9 +170,11 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 
 **Objective:** Replace simulated STT with a real streaming provider behind the same adapter.
 
-**Key tasks:** verify current official provider docs (endpoint, auth, audio format, model ID, pricing, data retention); implement provider adapter; decide ADR-005 (relay vs ephemeral client token) with measured latency; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
+**Entry gate:** Phase 2 auth and resume tests pass. The server refuses to start with a real key unless `APP_PASSPHRASE_HASH` is set.
 
-**Acceptance:** partial transcript p50 < 1.0 s measured in debug panel on 3 test recordings; reconnect within 5 s after network drop; limits enforced; provider data policy documented in SECURITY_PRIVACY.md.
+**Key tasks:** verify current official provider docs (endpoint, auth, audio format, model ID, pricing, data retention, console budget limits); implement the **spend ledger (ARCHITECTURE §11.1) before the first real provider call**; implement provider adapter; decide ADR-005 (relay vs ephemeral client token) with measured latency; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option; set the provider-side budget.
+
+**Acceptance:** partial transcript p50 < 1.0 s measured in debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test) and refuses calls over the daily limit; upstream STT closes on disconnect; provider data policy documented in SECURITY_PRIVACY.md. CI never calls the real provider.
 
 **Risks:** provider API changes; cost during testing (use short clips, keep simulated mode default).
 
@@ -129,9 +184,11 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 
 **Objective:** Detect questions, classify type, stream answers with cancellation and de-dup.
 
-**Key tasks:** heuristic detector (pure functions + test table of 50+ real phrasings); silence debounce; de-dup; answer engine with prompt templates per type/length; `answer.*` messages; Markdown sanitized rendering; spend limits; timing instrumentation.
+**Key tasks:** heuristic detector (pure functions + test table of 50+ real phrasings); silence debounce; de-dup; answer engine with prompt templates per type/length; `answer.*` messages; Markdown sanitized rendering; ledger reservations for classification and answers; timing instrumentation. Sessions remain in memory only (FR-S1).
 
-**Acceptance:** 0 duplicate requests in test script; first-token p50 < 1.5 s; cancel stops upstream request; detector precision/recall measured on the test table (target ≥ 85% each).
+**No personal-experience claims yet (FR-Q8):** without a verified KB, prompts instruct general/theoretical answers. Behavioral questions get a clearly labeled example approach, never a first-person story.
+
+**Acceptance:** 0 duplicate requests in test script; first-token p50 < 1.5 s; cancel stops upstream request and reconciles the reservation; detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
 
 ---
 
@@ -139,9 +196,9 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 
 **Objective:** Knowledge base with provenance labels, grounded answers.
 
-**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI; text/Markdown import; keyword retrieval; prompt grounding + injection defenses; export/delete all.
+**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI with provenance labels; text/Markdown import; keyword retrieval; prompt grounding + injection defenses; **opt-in session persistence (FR-S1b) shipped together with retention, expiry purge, per-session delete, "delete everything", and export (FR-S4)**; UI note that local deletion does not affect provider retention.
 
-**Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; injection test documents ("ignore previous instructions…") do not change behavior.
+**Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; injection test documents ("ignore previous instructions…") do not change behavior; with persistence off (the default), nothing session-related is written to IndexedDB (test); expired sessions are purged on startup (test with a mocked clock).
 
 ---
 
@@ -173,7 +230,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 
 ## Phase 9 — Testing, deployment, and release
 
-**Objective:** E2E tests (Playwright with fake media stream), deployment of the server to a lightweight host with authentication, versioned release with CHANGELOG.
+**Objective:** Full E2E regression suite (extending the smoke tests from Phases 1–2), deployment of the server to a lightweight host with authentication, versioned release with CHANGELOG.
 
 **Key tasks:** choose host (ADR); auth for the deployed server; release workflow; user guide.
 
@@ -184,8 +241,9 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio ye
 | Level | Tool | Scope |
 |---|---|---|
 | Unit | Vitest | Pure logic: detection, de-dup, prompt building, message validation, backoff, PCM conversion |
-| Integration | Vitest + Fastify `inject` / WS client | Server routes, WS protocol, limits, adapter with simulated provider |
-| E2E | Playwright (Phase 9) | Chromium with `--use-fake-device-for-media-stream` and a WAV fixture |
+| Integration | Vitest + Fastify `inject` / WS client | Server routes, auth (unauthorized paths), WS protocol, resume semantics, ledger persistence, adapter with simulated provider |
+| E2E smoke | Playwright, Chromium only (from Phase 1) | Phase 1: load + WS echo against the built app. Phase 2: fake-media permission, start/stop, track release, denied path. Grows each phase. |
+| E2E full | Playwright (Phase 9) | Full regression with a WAV fixture via `--use-file-for-fake-audio-capture` |
 | Prompt evals | Scripted fixture set (Phase 4–6) | Grounding (no fabrication), format compliance, injection resistance |
 | Performance | Debug panel timings + scripted runs | NFR-1, NFR-2, NFR-4 |
 

@@ -38,6 +38,7 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q5 | Classify question type: conceptual, troubleshooting, behavioral, coding, system design, other | P0 |
 | FR-Q6 | Configurable answer length: short (~30 s), standard (~1 min), detailed (2–3 min spoken) | P0 |
 | FR-Q7 | Follow-up awareness: recent Q&A turns are included in context | P0 |
+| FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
 
 ### 2.3 Answer formats
 
@@ -66,10 +67,11 @@ Answers should sound conversational (a brief natural opener, plain sentences, na
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-S1 | Session = transcript + Q&A + metadata, stored locally in IndexedDB | P0 |
+| FR-S1 | Session = transcript + Q&A + metadata, held **in browser memory**; discarded on tab close | P0 |
+| FR-S1b | Opt-in persistence of sessions to IndexedDB (off by default) | P1 (Phase 5) |
 | FR-S2 | End-of-session summary (topics, questions asked, gaps to study) | P1 |
-| FR-S3 | Session history list with search | P1 |
-| FR-S4 | Configurable retention (e.g., delete after 7/30/90 days or never store) | P1 |
+| FR-S3 | Session history list with search (requires FR-S1b) | P1 |
+| FR-S4 | Retention 7/30/90 days, expiry purge, per-session delete, "delete everything". **Ships in the same phase as FR-S1b; never later.** | P1 (Phase 5) |
 
 ### 2.6 Practice mode (Phase 6)
 
@@ -102,9 +104,10 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | NFR-3 | Duplicate AI requests per detected question | 0 |
 | NFR-4 | Browser memory for a 60-min session | < 300 MB tab |
 | NFR-5 | Local storage per 60-min session (text only) | < 2 MB |
-| NFR-6 | WebSocket reconnect after drop | Auto-retry with backoff, resume within 5 s on a healthy network |
-| NFR-7 | Spending | Server-enforced per-session and daily limits (see `.env.example`) |
+| NFR-6 | WebSocket reconnect after drop | Resume per ARCHITECTURE §6.3 within 5 s on a healthy network; no duplicate or reordered finals |
+| NFR-7 | Spending | Server-enforced per-session and daily limits that survive reconnects and restarts (ARCHITECTURE §11.1). Estimate-based; the provider-side budget is the hard backstop. |
 | NFR-8 | Security | No API key in client bundle; all inputs validated; see SECURITY_PRIVACY.md |
+| NFR-11 | Authentication | Caller authentication required before any paid provider is enabled (SECURITY_PRIVACY §3.1) |
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
 

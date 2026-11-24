@@ -5,8 +5,8 @@ Consolidates architecture, technical design, audio capture, AI engine, API desig
 ## 1. Principles
 
 1. **Browser-first, cloud-processed.** No local models. The laptop does only capture, display, and local storage.
-2. **Thin server.** The server exists to hold secrets, enforce limits, validate input, and proxy/mint tokens. No database server.
-3. **Local-first data.** Resumes, sessions, and transcripts live in the user's browser (IndexedDB). The server is stateless across sessions.
+2. **Thin server.** The server exists to authenticate the user, hold secrets, enforce limits, validate input, and proxy provider calls. No database server.
+3. **Local-first data.** Resumes, sessions, and transcripts live in the user's browser. The server keeps no user content; its only persistent state is the spend ledger file (§11.1).
 4. **Measure before optimizing.** Every pipeline stage emits timing marks.
 
 ## 2. System overview
@@ -52,10 +52,11 @@ flowchart LR
 | Question detector | `client/src/detect/` | Heuristic detection (pure functions), de-dup by normalized-text hash |
 | Session store | `client/src/store/` | IndexedDB wrapper (native API or a tiny wrapper, e.g. `idb` ~1 KB) |
 | UI | `client/src/ui/` | Transcript pane, answer pane, controls, settings, KB editor |
-| WS gateway | `server/src/ws/` | Auth token check, schema validation, per-connection rate limits |
+| Auth | `server/src/auth/` | Passphrase login, in-memory cookie sessions (SECURITY_PRIVACY §3.1) |
+| WS gateway | `server/src/ws/` | Cookie + Origin check on upgrade, schema validation, per-connection rate limits, session resume (§6.3) |
 | Transcription adapter | `server/src/stt/` | Provider-agnostic interface; `SimulatedSTT` + real provider implementation |
 | Answer engine | `server/src/answer/` | Classify → build prompt → stream LLM → forward tokens; cancellation |
-| Spend limiter | `server/src/limits/` | Count minutes/tokens per session and per day; refuse over limit |
+| Spend limiter | `server/src/limits/` | File-backed ledger; reserve budget before every upstream call, reconcile after (§11.1) |
 | Shared schemas | `shared/` | Message types + runtime validation (e.g. `zod` or Fastify JSON Schema — decide in Phase 1) |
 
 ## 4. Audio capture
@@ -166,31 +167,59 @@ Model identifiers and pricing are **not** hard-coded in docs. They are set via `
 
 ### 6.1 HTTP
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/healthz` | Liveness |
-| POST | `/api/session` | Create session; returns short-lived session token + limits |
-| WS | `/ws?token=…` | Realtime channel |
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/healthz` | none | Liveness (no data) |
+| POST | `/api/login` | passphrase | Sets `HttpOnly; Secure; SameSite=Strict` session cookie |
+| POST | `/api/logout` | cookie | Ends session |
+| GET | `/api/me` | cookie | Auth state + current limits/usage |
+| WS | `/ws` | cookie + Origin | Realtime channel |
+
+**No credentials in URLs.** The browser opens `/ws` on the same origin (Vite proxy in dev), so the cookie travels with the upgrade request. Server logs redact `cookie`/`authorization` headers. Cookie sessions expire after 12 h; unknown or expired session IDs are rejected (no replay of a logged-out session).
 
 ### 6.2 WebSocket messages
 
-All messages: `{ "type": string, "id": string, "ts": number, ...payload }`, validated against `shared/` schemas. Binary frames carry audio.
+All JSON messages: `{ "type": string, "id": string, "ts": number, ...payload }`, validated against `shared/` schemas. Binary frames carry audio: **4-byte big-endian uint32 sequence number + PCM16 payload**.
 
 | Direction | Type | Payload |
 |---|---|---|
 | C→S | `session.start` | `{ mode: "simulated" \| "live", source: "mic" \| "tab", language }` |
-| C→S | (binary) | PCM16 audio chunk |
+| S→C | `session.started` | `{ sessionId, limits }` |
+| C→S | `session.resume` | `{ sessionId, lastFinalSeq }` |
+| S→C | `session.resumed` | `{ sessionId, nextAudioSeq }` followed by replay of missed finals |
+| C→S | (binary) | `seq` + PCM16 audio chunk |
+| S→C | `audio.ack` | `{ seq }` (highest contiguous seq received, ~1/s) |
 | C→S | `session.stop` | — |
 | C→S | `answer.request` | `{ questionId, text, type?, length, context: { kbItems[], turns[] } }` |
 | C→S | `answer.cancel` | `{ questionId }` |
 | S→C | `transcript.partial` | `{ segmentId, text }` |
-| S→C | `transcript.final` | `{ segmentId, text, startMs, endMs }` |
+| S→C | `transcript.final` | `{ segmentId, finalSeq, text, startMs, endMs }` |
+| S→C | `transcript.gap` | `{ fromMs, toMs }` (audio dropped) |
 | S→C | `answer.delta` | `{ questionId, text }` |
 | S→C | `answer.done` | `{ questionId, usage }` |
-| S→C | `error` | `{ code, message, retryable }` |
+| S→C | `answer.interrupted` | `{ questionId }` |
+| S→C | `error` | `{ code, message, retryable }` (codes include `bad_request`, `unauthorized`, `duplicate`, `session_expired`, `limit_reached`) |
 | S→C | `limit.warning` / `limit.reached` | `{ kind, used, max }` |
 
 KB content is sent with each `answer.request` (client-owned data); the server does not persist it.
+
+### 6.3 Reconnect and resume semantics
+
+| Concern | Rule |
+|---|---|
+| Session identity | Server assigns `sessionId` (UUID) on `session.start`. A resume is accepted only from the same authenticated cookie session. |
+| Grace period | After a disconnect the server keeps session state for **30 s**, then discards it. Resume after that → `error session_expired` (terminal). |
+| Upstream STT | Closed on disconnect (no paid audio while no client is connected). Pending partials are finalized if the provider supports it, otherwise discarded. A new upstream stream opens on resume. |
+| Client audio buffer | Bounded to **3 s** (~30 frames) while disconnected. On overflow the oldest frames are dropped and the gap is shown as `[audio gap]` in the transcript. Frames acknowledged by `audio.ack` are freed. |
+| Sequence IDs | Audio frames: monotonically increasing `seq`; server ignores `seq` ≤ last received (duplicates after reconnect). Finals: `finalSeq`; on resume the server replays finals with `finalSeq > lastFinalSeq` from a bounded buffer (last 50). |
+| Stale data | Partials received before the disconnect are discarded on resume. Finals are kept. |
+| In-flight answers | Aborted upstream on disconnect (reservation reconciled, §11.1). Client marks the answer "interrupted" with a manual **Retry**. No automatic re-request, to avoid duplicate spend. |
+| Idempotency | `questionId` is remembered for the session lifetime (bounded to the last 200). A repeated `answer.request` returns `error duplicate`. |
+| Retry policy | Exponential backoff with jitter: 0.5 s → 8 s, max 6 attempts (~30 s). |
+| Terminal failure | Retries exhausted or `session_expired`: **stop capture, release all media tracks, hide the indicator**, show an error, and keep the transcript in memory. |
+| Indicator truth | While reconnecting with the mic still open, the indicator stays on and reads "Reconnecting — mic on". The indicator always reflects actual capture state. |
+
+**Required tests:** drop during audio → resume with no duplicate or reordered finals; drop longer than 3 s → gap marker; drop longer than 30 s → terminal state with tracks stopped; drop mid-answer → `interrupted`, no automatic retry; duplicate `questionId` → rejected; resume from another cookie session → rejected.
 
 ## 7. Session lifecycle
 
@@ -226,11 +255,15 @@ flowchart LR
 
 | Store | Contents | Size estimate | Retention |
 |---|---|---|---|
-| IndexedDB `sessions` | transcript segments, Q&A, summary | ~1–2 MB / hour | User-configurable |
-| IndexedDB `kb` | resumes, JDs, stories, preferences | < 5 MB typical | Until user deletes |
+| Browser memory | current session transcript and Q&A | ~1–2 MB / hour | Until tab closes (default) |
+| IndexedDB `sessions` (Phase 5, opt-in) | transcript segments, Q&A, summary | ~1–2 MB / hour | Off by default; 7/30/90 days when enabled; expiry enforced |
+| IndexedDB `kb` (Phase 5) | resumes, JDs, stories, preferences | < 5 MB typical | Until user deletes |
 | IndexedDB `settings` | preferences | < 10 KB | Persistent |
-| Server memory | per-connection buffers only | — | Cleared on disconnect |
-| Server logs | metadata only (no transcript/KB text) | small | Rotated |
+| Server memory | auth sessions, per-session buffers (30 s grace) | small | Cleared on expiry/restart |
+| Server file `data/spend-ledger.json` | daily cost totals | < 50 KB | 90 days |
+| Server logs | metadata only (no transcript/KB text, no cookies) | small | Rotated |
+
+The flow diagram above applies once persistence is enabled. By default, session data never reaches IndexedDB.
 
 ## 9. UI/UX
 
@@ -264,7 +297,7 @@ flowchart LR
 | Duplicates | Client de-dup + server idempotency on `questionId` |
 | Cancellation | Abort upstream LLM request (`AbortController`) when superseded |
 | Memory | Virtualized transcript list beyond ~500 segments; drop partials once final arrives |
-| Reconnect | Exponential backoff with jitter (0.5 s → 8 s max), resend `session.start`, preserve local state |
+| Reconnect | Resume protocol in §6.3 (session identity, sequence IDs, bounded buffers) |
 
 **Instrumentation:** `performance.mark()` at speech-end, final-transcript, request-sent, first-token, done. Display p50/p95 in a debug panel.
 
@@ -276,6 +309,21 @@ flowchart LR
 - Bounded context (§5.4); short/standard answers by default, detailed on demand.
 - Server-side limits: `MAX_ANSWERS_PER_SESSION`, `MAX_TRANSCRIPTION_MINUTES`, `DAILY_SPEND_LIMIT_USD`; UI shows usage.
 - Use a smaller/cheaper model for classification and summaries, larger only for answers.
+
+### 11.1 Spend accounting
+
+The daily cap must survive reconnects and server restarts, and it must cover **every** paid call: transcription, classification, answers, and summaries.
+
+| Aspect | Design |
+|---|---|
+| Ledger | JSON file at `SPEND_LEDGER_PATH` (default `data/spend-ledger.json`, gitignored). Keyed by UTC date: `{ reservedUsd, actualUsd, byKind: { stt, classify, answer, summary } }`. Loaded at startup. |
+| Writes | Atomic: write a temp file, `fsync`, rename. All updates go through one in-process async queue, so there are no lost updates within a single process. |
+| Reserve | Before an upstream call, reserve the **maximum** estimated cost: LLM = prompt tokens + `max_tokens` × price; STT = reserve in 1-minute blocks while streaming. If `actual + reserved + new > DAILY_SPEND_LIMIT_USD`, refuse with `limit_reached`. |
+| Reconcile | On completion, replace the reservation with the actual cost from the provider's usage data. On failure or abort, charge the partial usage if reported, otherwise release the reservation. |
+| Crash recovery | Reservations still open at startup are converted to actual cost (conservative: assume fully spent). |
+| Prices | Per-model price table in server config, verified against official pricing in Phases 3–4. Unknown model → refuse to call it. |
+| Limitations (documented, not hidden) | Costs are **estimates** and can differ from provider billing. The single-file design assumes **one server process**; multiple instances need a shared store (ADR). Deleting the file resets the count. |
+| Backstop | Also set a budget or usage limit in the provider's console, if the provider offers one (verify in Phase 3). This is the only true hard cap. |
 
 ## 12. Storage (developer machine)
 
