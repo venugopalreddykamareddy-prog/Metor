@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "engine": "groq-120b",
+    "length": "standard",
+    "reasoning": "medium",
+    "maxTokens": {
+      "short": 1000,
+      "standard": 1400,
+      "detailed": 2200
+    },
+    "date": "2026-11-24T18:40:56.754Z",
+    "detection": {
+      "precision": 100,
+      "recall": 100,
+      "missed": []
+    },
+    "questions": 1,
+    "answered": 1,
+    "errors": 0,
+    "assessmentAccuracy": 100,
+    "falsePositiveFlags": null,
+    "noAnswerIrrelevant": "0/0",
+    "suspectedHallucinations": [],
+    "experienceClaims": [],
+    "emptyAnswers": [],
+    "styleIssueRate": 0,
+    "styleIssues": {},
+    "tokensPerAnswer": {
+      "n": 1,
+      "prompt": 916,
+      "completion": 569,
+      "reasoning": 331,
+      "total": 1485
+    },
+    "truncated": [],
+    "numericIssues": [],
+    "firstTokenP50Ms": 1050,
+    "firstTokenP95Ms": 1050,
+    "byCategory": {
+      "incorrect_premise": {
+        "n": 1,
+        "assessmentCorrect": 1
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "inco-03",
+      "category": "incorrect_premise",
+      "question": "Given that the SLA is our internal target and the SLO is the customer contract, how should we set them?",
+      "expected": "incorrect_premise",
+      "assessment": "incorrect_premise",
+      "questionType": "technical",
+      "note": "The premise swaps SLA and SLO definitions.",
+      "clarify": null,
+      "answer": "I think the terms are usually the other way around—an SLA is the contract we promise to the customer, and an SLO is the internal target we aim to meet. To set them, I’d start by figuring out the business impact of downtime for the service. Say we decide a 99.9% monthly availability is acceptable; that gives us about 43 minutes of error budget. I’d set the SLO at that 99.9% level, maybe a bit tighter if we want a safety margin. Then the SLA I’d offer the customer could be the same number or a slightly lower figure, like 99.8%, to give us room to handle spikes without breaching the contract. I’d document the error budget, monitor it with alerts, and review the numbers each quarter to make sure they still match the customer’s expectations and our capacity. This way the internal goal drives the external promise, and we have a clear path to stay within the SLA.",
+      "firstTokenMs": 1050,
+      "totalMs": 1465,
+      "tokens": 1485,
+      "promptTokens": 916,
+      "completionTokens": 569,
+      "reasoningTokens": 331,
+      "truncated": false,
+      "numericIssues": [],
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    }
+  ]
+}
