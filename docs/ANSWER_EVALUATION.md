@@ -103,6 +103,7 @@ Provider-reported tokens per answer (Groq `usage`; the reasoning split is report
 | Concise 3.0K-char prompt, 120B, medium, 1,400 budget | B | 1,330 (793 / 538 / 310) | 1.06 s | 2/2 | 2/4 |
 | **After (default): concise prompt, 20B, low, 512 budget** | A | 1,041 (789 / 252 / 40) | 0.34 s | — | — |
 | **After (default)** | B | 1,013 (793 / 221 / 24) | 0.36 s | 2/2 | 1/4 |
+| **Current default: stronger prompt v3, 120B, medium, 1,400 budget** | B | 1,489 (873 / 617 / 401) | 1.25 s | 2/2, no invented settings | 4/4 (inco-03's answer then mixes up which target should be tighter) |
 
 - The concise prompt alone cut ~600 tokens per answer (−31% on set B) with the same validation results on these six questions.
 - 20B with low reasoning cut a further ~300 (−49% overall vs before on set A, −47% on set B) and made the first word about 3× faster. No answer hit the 512 budget (0/12 truncated).
@@ -112,7 +113,7 @@ Provider-reported tokens per answer (Groq `usage`; the reasoning split is report
 
 For trick-heavy practice, "Regenerate with 120B" or `ANSWER_REASONING_EFFORT=medium` with `ANSWER_MAX_TOKENS=1000,1400,2200` restores the stronger premise checking: about 1.3K tokens per answer instead of 1.0K. Medium reasoning with the 256/512 budgets risks empty or cut-off answers.
 
-**Update (same day):** the owner chose 120B with medium reasoning as the default again (about 1.3K tokens per answer on set B, the third row above), with 20B-low as a fast mode. The prompt then got stronger premise and unknown-term rules, and its examples were replaced: earlier versions quoted evaluation questions ("kubectl rewind", "Istio Hyperdrive mode", "UDP guarantees in-order delivery", "cube cuddle"), which inflated those results. **The new prompt has not been run against Groq** (no live tokens without approval). Re-run set B before relying on these numbers.
+**Update (same day):** the owner chose 120B with medium reasoning as the default again (about 1.3K tokens per answer on set B, the third row above), with 20B-low as a fast mode. The prompt then got stronger premise and unknown-term rules, and its examples were replaced: earlier versions quoted evaluation questions ("kubectl rewind", "Istio Hyperdrive mode", "UDP guarantees in-order delivery", "cube cuddle"), which inflated those results. Set B re-run with the new prompt (approved, ~8.9K tokens): the last row of the table. Set B has no ambiguous-terminology items.
 
 ### Still to do
 
