@@ -1,39 +1,37 @@
-# RealTime AI Assistant
+# Metor
 
-> Repository: `Metor` · Status: **Phase 0 — documentation only, no application code yet**
+Metor is a personal project: a browser app that transcribes speech, spots questions, and streams suggested answers based on my own verified resume and project notes. I'm building it mainly for SRE, DevOps, and networking interview practice.
 
-A lightweight, browser-first assistant that transcribes speech in real time, detects questions, and streams context-aware answers grounded in the user's own verified resume, projects, and STAR stories.
+## Status
 
-**Primary use cases**
+Main has design docs only. No application code is merged yet.
 
-- Mock interview and technical practice (SRE, DevOps, Platform, Cloud, Network, Network Security).
-- Coding and system design practice.
-- Professional meeting assistance (notes, summaries, follow-up questions).
-- Live interview assistance **only where AI use is expressly permitted** by the interviewer/organization.
-
-**What this app will not do:** covert recording, hiding itself from screen sharing, or fabricating experience. See [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md).
-
-## Documentation
-
-| Document | Purpose |
+| Phase | State |
 |---|---|
-| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Functional and non-functional requirements, technical coverage |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, audio pipeline, AI engine, API, performance, cost, storage |
-| [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) | Consent, data handling, threat model, prompt-injection defenses |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phases 0–9, acceptance criteria, testing strategy |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture Decision Records (ADRs) |
-| [AGENTS.md](AGENTS.md) | Rules for AI coding agents (Copilot, Claude Code) |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| 0. Docs and agent rules | Done (PR #1) |
+| 1. Web foundation: React + Vite client, Fastify server, WebSocket echo, CI | In review (PR #2) |
+| 2–9. Mic capture, transcription, answers, resume grounding, practice mode, desktop app, hardening, release | Planned, see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) |
 
-## Planned stack (MVP)
+## Constraints
 
-- **Client:** React + TypeScript + Vite, IndexedDB for local data
-- **Server:** Node.js 24 + Fastify + WebSocket
-- **AI (free-first, $0/month target):** simulated transcription and answers by default; Groq free tier for transcription and answers; browser Web Speech API evaluated for transcription; Gemini free tier optional (no personal data). Paid providers are disabled by default and never used as an automatic fallback. See [ADR-009](docs/DECISIONS.md#adr-009-free-first-ai-provider-strategy).
-- **Tooling:** pnpm, Vitest, Playwright smoke tests from Phase 1 (Chromium), GitHub Actions
-- **Dev environment:** GitHub Codespaces and GitHub Actions only (nothing installed on the local Mac, no local AI models)
-- **Desktop:** Electron — deferred to Phase 7
+These shape most of the design decisions:
 
-## Getting started
+- **No cost.** Simulated providers by default, then free tiers (Groq, optional Gemini, browser Web Speech). Paid APIs are off by default and never used as a fallback when a free quota runs out ([ADR-009](docs/DECISIONS.md#adr-009-free-first-ai-provider-strategy)).
+- **Nothing installed on my Mac.** Development runs in GitHub Codespaces and CI in GitHub Actions. No local AI models.
+- **Consent and honesty.** Recording starts only when I click Start and always shows an indicator. Live use only where AI help is allowed. Metor never hides from screen sharing and never invents experience ([docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md)).
+- **Small footprint.** One package, no database server, few dependencies.
 
-Application setup instructions will be added in Phase 1 (`docs/DEVELOPMENT.md`). No API key is needed to start: the app runs in simulated mode by default. Real providers (from Phase 3) are configured through Codespaces secrets; see [.env.example](.env.example) for the variable names. Never commit `.env`.
+## Docs
+
+- [REQUIREMENTS.md](docs/REQUIREMENTS.md): what Metor should do, with priorities
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): components, message protocol, cost controls
+- [SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md): consent, data handling, auth, threats
+- [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md): phases and acceptance criteria
+- [DECISIONS.md](docs/DECISIONS.md): decision records (ADRs)
+- [AGENTS.md](AGENTS.md): rules for AI coding agents working in this repo
+
+## How it's built
+
+I set the requirements and review changes before merging. So far the code and docs have been drafted with Claude Code; `.github/copilot-instructions.md` sets up the same rules for Copilot. Commits made with an agent carry a `Co-Authored-By` line.
+
+Setup instructions land with Phase 1 in `docs/DEVELOPMENT.md`. No API key is needed for Phases 1–2.

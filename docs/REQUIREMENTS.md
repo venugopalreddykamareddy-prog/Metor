@@ -25,8 +25,8 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-A4 | Simulated transcription mode for development and tests (no API cost); default provider | P0 |
 | FR-A5 | Pause/resume without losing session state | P0 |
 | FR-A6 | Speaker separation: at minimum "me" vs "other" when two sources are available | P2 |
-| FR-A8 | Configurable transcription provider: simulated, Groq free tier, or browser Web Speech API (ADR-009) | P0 |
 | FR-A7 | Capture of meeting audio (Teams, Zoom, Meet, Webex) — see [ARCHITECTURE § 4](ARCHITECTURE.md#4-audio-capture) for platform limits | P1 (tab audio) / P2 (system audio) |
+| FR-A8 | Configurable transcription provider: simulated, Groq free tier, or browser Web Speech API (ADR-009) | P0 |
 
 ### 2.2 Question detection and answers
 
@@ -39,8 +39,8 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q5 | Classify question type: conceptual, troubleshooting, behavioral, coding, system design, other | P0 |
 | FR-Q6 | Configurable answer length: short (~30 s), standard (~1 min), detailed (2–3 min spoken) | P0 |
 | FR-Q7 | Follow-up awareness: recent Q&A turns are included in context | P0 |
-| FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 | FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
+| FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 
 ### 2.3 Answer formats
 
@@ -120,9 +120,9 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | NFR-6 | WebSocket reconnect after drop | Resume per ARCHITECTURE §6.3 within 5 s on a healthy network; no duplicate or reordered finals |
 | NFR-7 | Spending | $0 by default. Server-enforced per-session, daily spend, and free-tier quota limits that survive reconnects and restarts, with conservative reservations when usage is unknown (ARCHITECTURE §11.1). Provider budget alerts are not treated as hard caps. |
 | NFR-8 | Security | No API key in client bundle; all inputs validated; see SECURITY_PRIVACY.md |
-| NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
+| NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
 
 ## 5. Out of scope
 
@@ -131,4 +131,4 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 - Native mobile apps.
 - Multi-user accounts / cloud sync (single-user, local-first).
 - Executing generated commands.
-- Any feature intended to conceal the app from meeting participants or screen sharing.
+- Any feature meant to hide Metor from meeting participants or screen sharing.
