@@ -204,7 +204,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 4 — Question understanding and streaming answers
+## Phase 4 — Question understanding and streaming answers (in review, PR #6)
 
 **Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
@@ -220,23 +220,27 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - Ledger reservations for answer requests; quota exhaustion handled with no fallback; latency instrumentation.
 - Evaluation runner over `eval/answer-questions.json` (simulated in CI; manual free-tier run).
 
-**Acceptance**
-- Carried from Phase 3: Browser speech (and Groq, if a key is set) measured on the accuracy script; word error rate and term recall recorded in docs/STT_EVALUATION.md.
-- 0 duplicate requests in the test script; never more than one LLM request per detected question.
-- Extraction fixture (`eval/question-extraction.json`): the right questions, word for word, in ≥ 90% of cases; no answer for filler-only and incomplete cases (unit tests).
-- Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…") are extracted as questions.
-- Incomplete phrases ("can you please help me to") are never answered; the answer waits until the question finishes, and a completed question replaces its earlier incomplete version.
-- Several questions in one continuous stretch are extracted separately; a rapid topic change starts a new item and cancels the in-flight answer.
-- Duplicate transcript events are dropped; a genuine repeat re-shows the earlier answer without a new request.
-- Ambiguous acronyms (AAA, AA, …) are resolved from context with the assumption stated, or a clarifying question is asked; never a silent guess.
-- Original meaning is preserved: extracted questions are word-for-word spans of the clean transcript.
-- Question detection accuracy measured on the extraction fixture plus the answer evaluation set: precision and recall ≥ 90% for "is this an answerable question".
-- End-to-end latency measured and recorded per transcription mode: speech end → first answer token (NFR-2b), and final transcript → first token (NFR-2).
-- `irrelevant` items produce no answer card (≥ 7 of 8); several questions at once are split.
-- Final transcript → first token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b recorded per transcription mode.
-- Answers are natural and conversational, not textbook-style (naturalness ≥ 4/5). STAR is used only for experience questions, and only from verified KB stories once Phase 5 exists; before that, behavioral questions get a labeled example approach (FR-Q8).
-- On the answer evaluation set (technical, behavioral, tricky, fabricated, irrelevant, misleading questions) with the free-tier provider: assessment accuracy ≥ 85%, false-positive flags ≤ 5%, **0 hallucinations** on fabricated terms and experience traps, factual accuracy ≥ 1.7/2, naturalness ≥ 4/5 (docs/ANSWER_EVALUATION.md).
-- Cancel stops the upstream request; the reservation is kept unless usage is reported. Gemini never receives KB content (test). Quota exhaustion never selects another provider (test).
+**Acceptance** (status 2026-11-24; ✅ verified here, ⬜ open, with what's missing)
+- [ ] Carried from Phase 3: Browser speech (and Groq, if a key is set) measured on the accuracy script; word error rate and term recall recorded in docs/STT_EVALUATION.md. **Needs the owner's voice and mic.** Owner's fourth manual test recorded: final latency 0.48 s (n=2).
+- [x] 0 duplicate requests in the test script; never more than one LLM request per detected question (tracker unit tests, `questionId` idempotency test, one `AnswerSession.handle` per question in the eval runner)
+- [x] Extraction fixture (`eval/question-extraction.json`): 30/30 word for word; holdout 13/15 blind, then 15/15; no answer for filler-only and incomplete cases (unit tests)
+- [x] Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…", "design…") are extracted as questions (unit tests)
+- [x] Incomplete phrases are never answered; the answer waits; a completed question replaces its earlier incomplete version (tracker tests; trailing fillers no longer hide a dangling end)
+- [x] Several questions in one stretch are extracted separately; a rapid topic change starts a new item and cancels the in-flight answer, keeping its partial text (unit, integration and e2e tests)
+- [x] Duplicate transcript events are dropped; a genuine repeat re-shows the earlier answer without a new request, moved to the end and marked "asked again" (tracker and grouping tests)
+- [x] Ambiguous acronyms: context hints in the prompt (`shared/acronyms.ts`); on the Groq sample, ambi-11 ("AAA on the firewall") stated the assumed meaning and answered, and ambi-12 ("experience with AA") asked which meaning; the label for ambi-11 was `clarification_needed` where `none` was expected
+- [x] Original meaning is preserved: extracted questions are word-for-word spans of the clean transcript (unit tests)
+- [x] Question detection precision and recall ≥ 90%: answer evaluation set 98.0% precision / 95.2% recall (local extraction; misses are four incident descriptions with no question, e.g. "Ping works, but TCP connections to port 443 time out.", and one requirement statement); extraction fixture 30/30. CI enforces ≥ 90% (`pnpm eval:answers --check`).
+- [ ] End-to-end latency per transcription mode (NFR-2b). Recorded so far: speech end → first answer word median 1.06 s with **simulated** answers (owner, real speech). Not yet measured with Groq answers from real speech.
+- [ ] `irrelevant` items produce no answer card (≥ 7 of 8): 6 of 8 are skipped locally (greetings, audio checks, "let me share my screen", an unfinished sentence). The other two ("What's your favorite movie?", "Who won the football match last night?") rely on the model labeling them `off_topic`, which the UI shows as a one-line note, not a card. Not yet run on Groq.
+- [ ] Final transcript → first token p50 < 1.5 s with `GroqAnswer` (NFR-2): server-side request → first answer word p50 1.11 s, p95 1.87 s on the 28-question Groq sample (medium reasoning). The browser-side number from real speech is still to be measured.
+- [ ] Answers are natural and conversational (naturalness ≥ 4/5): prompt rewritten for spoken style; automatic style flags 0/27 on the Groq sample; reading the answers, they're conversational but often walk through "First… Next… Finally…" and ended with a formulaic "A common gotcha is…" (prompt adjusted). Needs a person to grade naturalness. Behavioral questions get a labeled example approach (prompt; FR-Q8).
+- [ ] Answer evaluation set with the free-tier provider (assessment ≥ 85%, false positives ≤ 5%, 0 hallucinations, factual ≥ 1.7/2, naturalness ≥ 4/5): 28 of 113 questions so far: assessment 23/28 (82%), false positives 0/4, no made-up term described as real, one claimed experience (fixed, re-check 0/6), first-reading notes in docs/ANSWER_EVALUATION.md. A full run needs more than one day's free budget, and the grades need a person (docs/ANSWER_EVALUATION.md).
+- [x] Cancel aborts the upstream request; the reservation is kept unless usage is reported; quota exhaustion (429 or local budget) never selects another provider (engine tests with a faked Groq). Gemini isn't built in this phase, and there is no KB yet, so nothing can reach it.
+
+**UI added in this phase (owner's review, 2026-11-24):** resizable panels with the answers panel ≈ 55% by default; collapsible transcript and questions; focus mode; answer text size and line spacing; copy; answer versions kept on regenerate; clear "Simulated · not AI" vs "AI-generated" labels; "solo" → SLO only with reliability context. All covered by unit and Playwright tests.
+
+**Not done in this phase:** local unknown-term hints ("not in Metor's glossary"). With a glossary of about 100 terms, most real technologies would be flagged, which pushes the model toward false flags. The model-side term check (ADR-014) flagged 8 of the 9 made-up terms tried so far, so the hint waits for the larger technology list and the user's own internal-tools list in Phase 5. Optional `GeminiAnswer` not built.
 
 ---
 

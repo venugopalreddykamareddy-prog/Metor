@@ -14,12 +14,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Playwright tests for answers: spoken question → extracted → simulated answer labeled as such; regenerate keeps versions; copy; a new question stops the previous answer but keeps its text; panel widths, resizing and persistence; collapsing; focus mode with display settings.
 - "solo" is read as SLO only with reliability context ("an solo", "latency solo", "solo burn rate", "our solos" next to availability or error-budget words); "worked solo", "a guitar solo", "a solo project" stay as they are.
 - ADR-014: medium reasoning effort for GPT-OSS answers and NOTE before ASSESSMENT in the header.
+- Claimed-experience safety net (`shared/experienceClaims.ts`): answers that say "I've built…", "at my last company…" and similar get a red "Claims experience you haven't verified" note, and the evaluation flags them in every category. The prompt now forbids past-tense first-person claims for every question type.
+- Local rolling summary: questions older than the last three turns go along as `earlier` (≤ 800 characters), with no extra request.
+- First Groq evaluation (28 of 113 questions plus a 6-question re-check) in `eval/results/` and docs/ANSWER_EVALUATION.md; owner's fourth manual test recorded in docs/STT_EVALUATION.md.
 
 ### Fixed
 
 - Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.
 - Playwright's test server now blanks `GROQ_API_KEY` and `GEMINI_API_KEY`, so a key in the Codespace environment can't make browser tests call a real provider.
 - Answer header parser accepts a one-line header with `|` separators and either field order.
+- A Groq answer with no text (reasoning used the whole budget) now fails with "Try Regenerate" instead of finishing empty; completion budgets raised to 1,000 / 1,400 / 2,200 tokens.
+- Transcript auto-scroll runs before paint (`useLayoutEffect`), so new lines never flash above the fold.
 
 ### Changed
 

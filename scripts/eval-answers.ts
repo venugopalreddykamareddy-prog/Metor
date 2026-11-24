@@ -12,6 +12,7 @@ import { parseArgs } from 'node:util';
 import type { FastifyBaseLogger } from 'fastify';
 import { ANSWER_ENGINES, type AnswerEngine, type ServerMessageBody } from '../shared/messages.ts';
 import { extractQuestions, isAnswerable } from '../shared/extract.ts';
+import { findExperienceClaims } from '../shared/experienceClaims.ts';
 import { correctTerms } from '../shared/vocabulary.ts';
 import { GROQ_CHAT_LIMITS, scaled } from '../server/src/app.ts';
 import { AnswerSession } from '../server/src/answer/engine.ts';
@@ -99,7 +100,7 @@ for (const q of questions) {
   const answerable = parts.filter(isAnswerable);
   const base = { id: q.id, category: q.category, question: q.question, expected: q.expected.assessment };
   if (answerable.length === 0) {
-    results.push({ ...base, assessment: null, questionType: null, note: 'no answerable question found locally', clarify: null, answer: '', firstTokenMs: null, totalMs: null, tokens: null, error: null, style: [], suspectedHallucination: false });
+    results.push({ ...base, assessment: null, questionType: null, note: 'no answerable question found locally', clarify: null, answer: '', firstTokenMs: null, totalMs: null, tokens: null, error: null, style: [], suspectedHallucination: false, experienceClaims: [] });
     console.log(`${n}/${questions.length} ${q.id}: skipped locally`);
     continue;
   }
@@ -140,6 +141,7 @@ for (const q of questions) {
     error,
     style: styleIssues(answer),
     suspectedHallucination: error ? false : suspectedHallucination(q.category, answer, assessment),
+    experienceClaims: findExperienceClaims(answer),
   });
   console.log(`${n}/${questions.length} ${q.id}: ${error ?? `${assessment} (expected ${q.expected.assessment})`}`);
   if (got.failed?.code === 'quota_exhausted') {

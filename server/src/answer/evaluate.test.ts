@@ -36,6 +36,11 @@ describe('hallucination checks', () => {
     expect(claimsExperience('Yes, I managed 10,000 nodes at my last company.')).toBe(true);
     expect(claimsExperience('When I managed the platform team we…')).toBe(true);
     expect(claimsExperience("There's no verified story loaded yet. One way I'd approach it is…")).toBe(false);
+    expect(claimsExperience("If you mean active-active, I've built services across two zones.")).toBe(true);
+  });
+
+  it('treats claimed experience as a hallucination in any category', () => {
+    expect(suspectedHallucination('ambiguous', "I've integrated several apps with Azure AD.", 'clarification_needed')).toBe(true);
   });
 
   it('flags fabricated answers that neither flag nor decline', () => {
@@ -64,6 +69,7 @@ function result(id: string, category: string, expected: string, assessment: Eval
     error: null,
     style: [],
     suspectedHallucination: false,
+    experienceClaims: [],
     ...extra,
   };
 }

@@ -84,6 +84,11 @@ export class AnswerSession {
       forward(parser.end());
       const usage = await stream.usage;
       if (ticket !== null && usage) this.deps.ledger?.settle(ticket, reserved, usage.promptTokens + usage.completionTokens);
+      if (firstTokenMs === null) {
+        // Header only, or nothing: the model spent its budget reasoning. Say so instead of an empty card.
+        this.deps.log.warn({ questionId: req.questionId, engine: req.engine, tokens: usage }, 'answer had no text');
+        return fail('provider_unavailable', 'The model returned no answer text (it may have run out of tokens while reasoning). Try Regenerate.');
+      }
       const totalMs = Date.now() - started;
       this.deps.log.info(
         { questionId: req.questionId, engine: req.engine, firstTokenMs, totalMs, tokens: usage },

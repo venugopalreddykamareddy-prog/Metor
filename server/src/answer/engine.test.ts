@@ -173,3 +173,19 @@ describe('AnswerSession with Groq streaming (faked)', () => {
     expect(l.usedInLast(1).units).toBeGreaterThan(1000);
   });
 });
+
+describe('AnswerSession with no answer text', () => {
+  it('fails visibly instead of finishing with an empty answer', async () => {
+    const groq = createGroqAnswer({
+      apiKey: 'k',
+      model: 'm',
+      log,
+      fetch: (async () => sse(['TYPE: technical\nNOTE: -\nASSESSMENT: none\nCLARIFY: -\nANSWER:\n'], { prompt_tokens: 1400, completion_tokens: 1400 })) as unknown as typeof fetch,
+    });
+    const { s, sent } = session({ 'groq-120b': groq }, await ledger());
+    await s.handle(request('groq-120b', 'How would you troubleshoot high CPU usage on a Linux server?'));
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.failed', code: 'provider_unavailable' });
+    expect((sent.at(-1) as { message: string }).message).toContain('Try Regenerate');
+    expect(sent.some((m) => m.type === 'answer.done')).toBe(false);
+  });
+});

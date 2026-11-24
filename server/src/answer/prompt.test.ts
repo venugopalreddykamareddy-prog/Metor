@@ -28,8 +28,10 @@ describe('buildMessages', () => {
     for (const phrase of ['contractions', "Don't open with a dictionary definition", 'No markdown', 'Great question', 'plays a crucial role', 'Spoken, aim for']) {
       expect(system).toContain(phrase);
     }
-    // Examples are framed as hypotheticals, never as the candidate's own history.
+    // Examples are framed as hypotheticals, never as the candidate's own history, in any answer.
     expect(system).toContain('never as something the candidate did');
+    expect(system).toContain('This applies to every answer, whatever its TYPE');
+    expect(system).toContain("\"What's your experience with X?\" is an experience question");
   });
 
   it('wraps interviewer text as data and states the length', () => {

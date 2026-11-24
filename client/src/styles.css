@@ -374,3 +374,4 @@ button.link {
 .answer.focus .answer-question { font-size: 1.35rem; }
 .cursor { animation: pulse 1s steps(2) infinite; }
 .answer.off-topic { padding: 0.3rem 0.75rem; font-size: 0.85rem; border-style: dotted; background: none; }
+.experience-warning { border-left-color: var(--bad); }

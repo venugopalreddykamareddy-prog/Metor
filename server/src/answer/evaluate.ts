@@ -1,6 +1,7 @@
 // Automatic checks for the answer evaluation (docs/ANSWER_EVALUATION.md). They flag answers for a
 // person to read; they don't replace reading them. Pure functions so they're unit-tested.
 import type { Assessment } from '../../../shared/answerFormat.ts';
+import { findExperienceClaims } from '../../../shared/experienceClaims.ts';
 
 export interface EvalQuestion {
   id: string;
@@ -28,8 +29,10 @@ export interface EvalResult {
   tokens: number | null;
   error: string | null;
   style: string[];
-  /** Fabricated / experience-trap answer that doesn't clearly decline: a person must check it. */
+  /** Fabricated / experience-trap answer that doesn't clearly decline, or any claimed experience. */
   suspectedHallucination: boolean;
+  /** Sentences claiming the candidate's own past experience (none is verified before Phase 5). */
+  experienceClaims: string[];
 }
 
 const STOCK_PHRASES = [
@@ -80,15 +83,14 @@ export function declines(answer: string): boolean {
   );
 }
 
-/** Plain statements of first-person history ("When I managed…", "At my last company…"). */
+/** Plain statements of first-person history ("I've built…", "At my last company…"). */
 export function claimsExperience(answer: string): boolean {
-  return /\b(yes,? I (?:have|did|managed|ran|led|built)|when I (?:managed|ran|led|built|was at|worked at)|at my (?:last|previous|current) (?:company|job|role|employer)|in my (?:last|previous|current) role|I (?:managed|ran|operated|led) (?:a |an |the |our )?\d[\d,]*)/i.test(
-    answer.replace(/’/g, "'"),
-  );
+  return findExperienceClaims(answer).length > 0;
 }
 
 export function suspectedHallucination(category: string, answer: string, assessment: Assessment | null): boolean {
   if (assessment === null) return false;
+  if (claimsExperience(answer)) return true; // no verified experience exists yet, whatever the category
   if (category === 'fabricated') return assessment !== 'unrecognized_term' && !declines(answer);
   if (category === 'experience_trap') return claimsExperience(answer) || (assessment !== 'unverified_experience' && !declines(answer));
   return false;
@@ -110,6 +112,8 @@ export interface EvalSummary {
   falsePositiveFlags: number | null;
   noAnswerIrrelevant: string;
   suspectedHallucinations: string[];
+  experienceClaims: string[];
+  emptyAnswers: string[];
   styleIssueRate: number | null;
   styleIssues: Record<string, number>;
   firstTokenP50Ms: number | null;
@@ -146,6 +150,8 @@ export function summarize(results: EvalResult[]): EvalSummary {
     falsePositiveFlags: pct(normal.filter((r) => r.assessment !== 'none').length, normal.length),
     noAnswerIrrelevant: `${irrelevant.filter((r) => r.assessment === null || r.assessment === 'off_topic').length}/${irrelevant.length}`,
     suspectedHallucinations: results.filter((r) => r.suspectedHallucination).map((r) => r.id),
+    experienceClaims: results.filter((r) => r.experienceClaims.length > 0).map((r) => r.id),
+    emptyAnswers: answered.filter((r) => r.category !== 'irrelevant' && r.answer.trim() === '').map((r) => r.id),
     styleIssueRate: pct(styled.filter((r) => r.style.length > 0).length, styled.length),
     styleIssues: styleCounts,
     firstTokenP50Ms: percentile(firstTokens, 0.5),
@@ -163,12 +169,12 @@ const csvCell = (v: unknown) => {
 export function toCsv(results: EvalResult[]): string {
   const head = [
     'id', 'category', 'question', 'expected', 'assessment', 'type', 'note', 'clarify', 'answer', 'first_token_ms', 'total_ms', 'tokens',
-    'style_issues', 'suspected_hallucination', 'error', 'factual_0_2', 'clarification_0_2', 'naturalness_1_5', 'hallucination_y_n',
+    'style_issues', 'suspected_hallucination', 'experience_claims', 'error', 'factual_0_2', 'clarification_0_2', 'naturalness_1_5', 'hallucination_y_n',
   ];
   const rows = results.map((r) =>
     [
       r.id, r.category, r.question, r.expected, r.assessment ?? 'skipped_locally', r.questionType, r.note, r.clarify, r.answer, r.firstTokenMs,
-      r.totalMs, r.tokens, r.style, r.suspectedHallucination ? 'yes' : '', r.error, '', '', '', '',
+      r.totalMs, r.tokens, r.style, r.suspectedHallucination ? 'yes' : '', r.experienceClaims.join(' | '), r.error, '', '', '', '',
     ]
       .map(csvCell)
       .join(','),

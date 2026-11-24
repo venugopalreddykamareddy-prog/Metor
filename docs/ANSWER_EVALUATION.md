@@ -55,4 +55,45 @@ Automatic flags are for triage, not grades: `suspected_hallucination` marks fabr
 
 ## Results
 
-None yet.
+### CI (simulated engine, every push)
+
+`pnpm eval:answers --check`: 113 questions, 0 errors, every sent question has a parseable header. Local question detection on this set: **precision 98.0%, recall 95.2%**. The 5 misses are incident descriptions with no question in them (tric-06, -07, -09, -10: "Ping works, but TCP connections to port 443 time out.") and one requirement statement (ambi-10). Irrelevant items: 6 of 8 are skipped locally; the other two ("What's your favorite movie?", "Who won the football match last night?") go to the model and rely on an `off_topic` label, which the UI shows as a one-line note, not an answer card. Simulated assessments are canned, so their accuracy isn't a result.
+
+### Groq free tier, 2026-11-24 (partial)
+
+`openai/gpt-oss-120b`, standard length. **28 of 113 questions** (genuine 4, fabricated 6, incorrect_premise 6, tricky_troubleshooting 6, ambiguous 6), chosen to cover the cases the owner asked about while leaving most of the day's free budget. The full answers are in `eval/results/answers-groq-120b-2026-11-24.{json,csv}`, plus a 6-question re-check after fixes in `…-recheck.{json,csv}`. The grades below are **my (Claude's) first reading** of every answer, not the owner's; the CSV has empty columns for the owner's grades.
+
+| Metric | Result | Target |
+|---|---|---|
+| Assessment accuracy | 23/28 (82%) | ≥ 85% |
+| False-positive flags (genuine) | 0/4 | ≤ 5% |
+| Made-up terms described as real | 0/6. One (fabr-11, the internal "Shipyard" tool) was answered as a design proposal that assumes Kubernetes without saying so: not invented facts, but it should have asked how Shipyard deploys | 0 |
+| Claimed experience | 1 (ambi-12, "What's your experience with AA?": "I've built services across two availability zones…"). Fixed: prompt rule for every question type plus a local detector; re-check 0/6 | 0 |
+| Empty answers | 1 (genu-05: medium reasoning used the whole 1,000-token completion budget). Fixed: budget 1,400 and an explicit "Try Regenerate" failure; re-check 0/6 | 0 |
+| Server request → first answer word | p50 1.11 s, p95 1.87 s (n=27); re-check p50 1.00 s (n=6) | p50 < 1.5 s (NFR-2 is measured from the final transcript in the browser; not yet done) |
+| Tokens per answer | ~2.0K (prompt ~1.4K + hidden reasoning + answer) | — |
+| Automatic style flags | 0/27 | — |
+
+Misses and weak spots, by reading the answers:
+- **Wrong premises:** 5/6 caught (BGP local preference, S3 as block storage, TLS 1.3 RSA, /24 = 1,024 hosts, 99.99% = 4 hours). Missed inco-07 (Terraform state in Git): the answer quietly recommends a remote backend but never says committing state is the problem. In earlier small runs, inco-02 (liveness vs readiness) was caught in one of two medium runs and inco-03 (SLA/SLO swapped) in none, so this category is the least reliable.
+- **Fabricated terms:** 4/6 labeled `unrecognized_term`. fabr-04 ("Route 64") was labeled a possible mishearing and said there's no such service, which is a fair reading; fabr-11 (Shipyard) was labeled `none` (see above). Answers say "I'm not familiar with…" and then help with the closest real thing. fabr-07 then speculates about what a "Raft-style" mode would do; it's framed as an assumption, but it's longer than it should be.
+- **Ambiguous:** 5/6. ambi-11 ("AAA on the firewall") was labeled `clarification_needed` instead of `none`, but the answer states the assumption (authentication, authorization, accounting) and proceeds, which is the behavior FR-U11 asks for.
+- **Experience probes (re-check):** expe-01, expe-03 and beha-01 say no verified experience is loaded, then describe an approach in "I'd…" form. expe-07 was labeled `none` and answered hypothetically without claiming anything, but it didn't point out the assumed experience.
+- **Factual slips worth checking:** inco-08 says TLS 1.3 cipher suites "enforce DHE" and the server "signs the DH parameters" (TLS 1.3 suites don't name the key exchange; the server signs the handshake transcript); genu-07 names the LSA refresh interval as the tuning point (SPF/LSA throttle timers are the usual answer); ambi-09 promises microsecond critical paths.
+- **Naturalness:** conversational and first person ("I'd start by…"), contractions, no headings or stock phrases. Two habits remain: a "First… Next… Finally…" walk-through on most answers, and almost every answer in the main run ended with "A common gotcha is…" or "The trade-off is…". The prompt now says to mention a trade-off only when it adds something; none of the six re-check answers ended that way. Rough reading: 3.5–4 out of 5, to be graded by the owner.
+
+### Reasoning effort (same 6 questions: fabr-02, fabr-03, inco-01 to inco-04)
+
+| Effort | Fabricated flagged | Wrong premises flagged | Server first word |
+|---|---|---|---|
+| low | 2/2 | 0/4 | 0.47–0.73 s |
+| medium (run 1) | 0/2 (both headers unparseable: one-line `\|` format, and no header) | 3/4 | 0.59–1.11 s |
+| medium (after prompt and parser fixes) | 2/2 | 2/4 | 0.69–1.39 s |
+
+Medium is the default (ADR-014).
+
+### Still to do
+
+- The rest of the set (85 questions: unusual_real, misheard, irrelevant, experience_trap, follow_up, behavioral, and the remaining items in the other categories), over two days of free budget.
+- Owner's grades in the CSV (factual, clarification, naturalness, hallucination).
+- Final transcript → first word in the browser with real speech and Groq answers (NFR-2, NFR-2b).

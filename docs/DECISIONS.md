@@ -227,4 +227,6 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 2. Header order is TYPE, NOTE, ASSESSMENT, CLARIFY, ANSWER: the model names the problem before choosing the label. The prompt shows one field per line with placeholders, not `a | b | c`. The parser accepts the one-line `|` form and either field order.
 3. `reasoning_effort` defaults to `medium`. On the same six fabricated/wrong-premise questions, low caught 0 of 4 wrong premises and medium 2–3 of 4 (it varies between runs), for about 0.2–0.5 s more to the first word. It stays configurable (`createGroqAnswer({ reasoningEffort })`, `pnpm eval:answers --reasoning`).
 
+4. Completion budgets rise to 1,000 / 1,400 / 2,200 tokens (short / standard / detailed): at 1,000, one standard answer spent everything on hidden reasoning and came back empty. An answer with no text is reported as a failure. The ledger reserves prompt + budget up front, so two standard answers in a row (~2.9K each) still fit 80% of the 8K tokens/minute limit.
+
 **Consequences:** Slightly slower first word and about 10% more tokens per answer on the free tier. Wrong-premise detection is still not reliable with this model (see docs/ANSWER_EVALUATION.md); a larger evaluation run and possibly a stronger free model are needed before the ≥ 85% assessment target can be claimed.
