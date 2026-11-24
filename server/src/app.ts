@@ -5,7 +5,11 @@ import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import { MAX_PAYLOAD_BYTES } from '../../shared/messages.ts';
 import type { ServerConfig } from './config.ts';
+import { registerAuthRoutes } from './auth/routes.ts';
+import { AuthSessions } from './auth/sessions.ts';
+import { createSimulatedStt } from './stt/simulated.ts';
 import { registerGateway } from './ws/gateway.ts';
+import { Recordings } from './ws/recording.ts';
 
 interface BuildOptions {
   logger?: boolean;
@@ -26,11 +30,20 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     bodyLimit: MAX_PAYLOAD_BYTES,
   });
 
+  const recordings = new Recordings(config.resumeGraceMs, createSimulatedStt);
+  const sessions = new AuthSessions(config.sessionTtlMs, (authId) => recordings.removeForAuth(authId));
+
   await app.register(websocket, { options: { maxPayload: MAX_PAYLOAD_BYTES } });
 
   app.get('/healthz', async () => ({ status: 'ok' }));
 
-  await registerGateway(app, { allowedOrigins: config.allowedOrigins });
+  await registerAuthRoutes(app, {
+    passphraseHash: config.passphraseHash,
+    sessions,
+    sessionTtlMs: config.sessionTtlMs,
+    allowedOrigins: config.allowedOrigins,
+  });
+  await registerGateway(app, { allowedOrigins: config.allowedOrigins, sessions, recordings });
 
   if (config.production) {
     // Compiled layout: dist/server/src/app.js → dist/client/

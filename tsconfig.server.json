@@ -17,7 +17,8 @@
   },
   "include": [
     "server",
-    "shared"
+    "shared",
+    "scripts"
   ],
   "exclude": [
     "dist"

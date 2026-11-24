@@ -233,12 +233,12 @@ Selection criteria: free-tier availability, data policy, streaming support, time
 
 ### 6.2 WebSocket messages
 
-All JSON messages: `{ "type": string, "id": string, "ts": number, ...payload }`, validated against `shared/` schemas. Binary frames carry audio: **4-byte big-endian uint32 sequence number + PCM16 payload**.
+All JSON messages: `{ "type": string, "id": string, "ts": number, ...payload }`, validated against `shared/` schemas. Binary frames carry audio: **4-byte big-endian uint32 sequence number + PCM16 little-endian samples**, 16 kHz mono, 100 ms (1600 samples) per frame. The client downsamples in an AudioWorklet. Close codes: `4401` login ended (terminal), `4000` connect timeout or replaced by a resume, `1008` rate limited.
 
 | Direction | Type | Payload |
 |---|---|---|
-| C→S | `session.start` | `{ mode: "simulated" \| "live", source: "mic" \| "tab", language }` |
-| S→C | `session.started` | `{ sessionId, limits }` |
+| C→S | `session.start` | `{ mode: "simulated", source: "mic" }` (Phase 2; `live` and `tab` come later) |
+| S→C | `session.started` | `{ sessionId }` |
 | C→S | `session.resume` | `{ sessionId, lastFinalSeq }` |
 | S→C | `session.resumed` | `{ sessionId, nextAudioSeq }` followed by replay of missed finals |
 | C→S | (binary) | `seq` + PCM16 audio chunk |
@@ -252,7 +252,7 @@ All JSON messages: `{ "type": string, "id": string, "ts": number, ...payload }`,
 | S→C | `answer.delta` | `{ questionId, text }` |
 | S→C | `answer.done` | `{ questionId, usage }` |
 | S→C | `answer.interrupted` | `{ questionId }` |
-| S→C | `error` | `{ code, message, retryable }` (codes include `bad_request`, `unauthorized`, `duplicate`, `session_expired`, `limit_reached`, `quota_exhausted`, `provider_unavailable`) |
+| S→C | `error` | `{ code, message, retryable }` (Phase 2 codes: `bad_request`, `no_session`, `session_expired`, `rate_limited`; later phases add `duplicate`, `limit_reached`, `quota_exhausted`, `provider_unavailable`) |
 | S→C | `limit.warning` / `limit.reached` | `{ kind, used, max, provider?, resetAt? }` (`kind`: `answers`, `minutes`, `spend`, `free_quota`) |
 
 KB content is sent with each `answer.request` (client-owned data); the server does not persist it.
@@ -261,7 +261,7 @@ KB content is sent with each `answer.request` (client-owned data); the server do
 
 | Concern | Rule |
 |---|---|
-| Session identity | Server assigns `sessionId` (UUID) on `session.start`. A resume is accepted only from the same authenticated cookie session. |
+| Session identity | Server assigns `sessionId` (UUID) on `session.start`. A resume is accepted only from the same authenticated cookie session. If the server still holds the old socket (it hasn't noticed the drop yet), the resume takes over and the old socket is closed with `4000`. |
 | Grace period | After a disconnect the server keeps session state for **30 s**, then discards it. Resume after that → `error session_expired` (terminal). |
 | Upstream STT | Closed on disconnect (no paid audio while no client is connected). Pending partials are finalized if the provider supports it, otherwise discarded. A new upstream stream opens on resume. |
 | Client audio buffer | Bounded to **3 s** (~30 frames) while disconnected. On overflow the oldest frames are dropped and the gap is shown as `[audio gap]` in the transcript. Frames acknowledged by `audio.ack` are freed. |

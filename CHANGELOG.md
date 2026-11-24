@@ -6,6 +6,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 2 (PR #4): passphrase login (scrypt, HttpOnly SameSite=Strict cookie, 12 h expiry, 5-attempt lockout, Origin check on writes); `pnpm hash-passphrase`; server refuses to start without a passphrase hash or with non-simulated providers.
+- Mic recording with a consent dialog, recording indicator and timer, and Start / Pause / Resume / Stop. An AudioWorklet downsamples to 16 kHz PCM16 and sends 100 ms frames with sequence numbers.
+- Simulated transcription (canned lines at speaking pace) with partials, finals, and gap markers.
+- Audio debug line while recording: frames/s, KB/s, and RMS level as received by the server (`audio.stats`, once per second, zeros while paused).
+- Session recovery: 3 s client audio buffer, server acks, 30 s resume window, replay of missed finals, and takeover when the server still holds a stale socket. Logout and session expiry close sockets with code 4401.
+- The mic is released on Stop, logout, login expiry, and terminal connection failure (Playwright checks every track ended).
 - Phase 1 (PR #2): pnpm project with Node 24 and pnpm pinned; React + Vite client with connection status and a message echo; Fastify server on `127.0.0.1` with `/healthz` and `/ws`.
 - `/ws` checks the `Origin` header, validates every message with shared zod schemas, rejects binary frames and frames over 16 KB, and logs only a fixed error code for bad input.
 - Client reconnect with backoff (0.5 s → 8 s) and a 10 s connect timeout. Server shuts down cleanly with a 5 s limit.
@@ -22,4 +28,5 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Logout and session expiry will close open WebSockets (Phase 2).
 - Groq audio segments are at least 8 s so the 10 s minimum per request doesn't exhaust the hourly quota.
 - Split answer latency into NFR-2 (from final transcript) and NFR-2b (end to end, per provider).
-- README: Metor as the project name, current status and what Phase 1 does, constraints, AI-assisted development note.
+- README: Metor as the project name, current status and what works, constraints, AI-assisted development note.
+- Phase 1 echo protocol removed; the WebSocket client gives up after 6 reconnect attempts (about 24 s, inside the server's 30 s resume window) and shows a Reconnect button.

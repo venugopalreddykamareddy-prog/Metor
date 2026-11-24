@@ -32,7 +32,7 @@ Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts,
 - [x] User has reviewed and agreed with requirements, especially scope and acceptable-use controls (approved merge of PR #1)
 - [x] Mermaid diagrams render on GitHub (all 5 diagrams parse with Mermaid 11)
 - [x] No secrets in repo; `.env` is ignored (`git check-ignore .env` prints `.env`; full history scanned)
-- [ ] Repo settings: secret scanning + push protection enabled (GitHub → Settings → Code security) — not readable with the Codespace token; owner to confirm
+- [ ] Repo settings: secret scanning + push protection enabled. **Not verified:** the Codespace token can't read security settings (`security_and_analysis` comes back empty). Owner check: GitHub → Metor → Settings → Advanced Security → Secret Protection and Push protection both enabled.
 
 ---
 
@@ -136,14 +136,14 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - [x] `pnpm build && pnpm start` serves the built client, and WS works on the single port (Playwright smoke test)
 - [x] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally and in CI
 - [x] CI uses the Node version from `.nvmrc` and the pnpm version from `packageManager`
-- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private (image, `sudo corepack enable`, and frozen install verified in Docker; a full Codespace rebuild is still to do)
+- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private. **Partly verified (2026-11-24):** the Dev Containers CLI built the container from `devcontainer.json`; `postCreateCommand` ran; inside it Node 24.18, pnpm 12.16.1, 2 CPUs, lint, 51 tests and build passed. **Not verified:** Codespaces-only behavior (`hostRequirements`, port forwarding and privacy). The Codespace token can't create Codespaces. Owner check: Command Palette → Codespaces: Rebuild Container, then confirm the Ports tab shows only 5173 as Private.
 - [x] No API key referenced anywhere in `client/`; no credentials in any URL (CI greps `dist/client`)
 
 **Risks:** Codespaces port forwarding and WS through the Vite proxy — verify early. Over-scaffolding by Copilot — reject extra libraries. Devcontainer changes require a Codespace rebuild (a few minutes).
 
 ---
 
-## Phase 2 — Microphone capture and simulated transcription
+## Phase 2 — Microphone capture and simulated transcription 🔍 (in review, PR #4)
 
 **Objective:** Real mic capture with consent flow and indicator; audio frames streamed to server; server returns **simulated** partial/final transcripts; authentication and resume protocol in place **before** any real provider exists. Zero API cost.
 
@@ -156,19 +156,19 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 **Storage impact:** negligible.
 
 **Acceptance criteria**
-- [ ] Login required. Unauthorized HTTP gets 401, WS without cookie or with a wrong Origin is rejected, brute force gets 429 (integration tests)
-- [ ] Logout closes the user's open WebSockets with `4401`; session expiry (mocked clock) does the same; client stops capture and shows login (integration + e2e)
-- [ ] Startup checks: any non-simulated provider without `APP_PASSPHRASE_HASH` → refuses to start; `ALLOW_PAID_PROVIDERS` defaults to `false` (unit tests)
-- [ ] Start shows consent dialog → browser permission prompt → indicator + timer visible
-- [ ] Audio frames reach the server with sequence numbers (debug counter of bytes/sec in dev panel)
-- [ ] Simulated partials appear in grey and are replaced by finals
-- [ ] Pause stops sending audio; Stop releases the mic (browser mic icon disappears)
-- [ ] Denying permission shows a clear error and returns to Idle
-- [ ] Every resume test listed in ARCHITECTURE §6.3 passes
-- [ ] Terminal failure stops all media tracks and hides the indicator
-- [ ] Transcript is held in memory only; nothing is written to IndexedDB
-- [ ] Unit tests: STT adapter interface, simulated transcript sequencing, PCM conversion, frame seq encoding
-- [ ] **E2E (Playwright, Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`):** login → start → simulated transcript appears → stop → assert tracks ended and indicator hidden; permission-denied path shows error; logout during capture → tracks ended, indicator hidden, login shown
+- [x] Login required. Unauthorized HTTP gets 401, WS without cookie or with a wrong Origin is rejected, brute force gets 429 (integration tests)
+- [x] Logout closes the user's open WebSockets with `4401`; session expiry does the same (integration test uses a 300 ms session lifetime rather than a mocked clock); client stops capture and shows login (e2e)
+- [x] Startup checks: the server refuses to start without `APP_PASSPHRASE_HASH` (stricter than planned: auth is always on), with any provider other than `simulated`, or with `ALLOW_PAID_PROVIDERS` not `false` (unit tests)
+- [x] Start shows consent dialog → browser permission prompt → indicator + timer visible
+- [x] Audio frames reach the server with sequence numbers (integration tests for seq tracking, duplicates, gaps, acks). While recording, a debug line shows what the server received in the last second: frames, KB, and audio level (e2e checks ~10 frames/s and a non-silent level from the fake mic).
+- [x] Simulated partials appear in grey and are replaced by finals
+- [x] Pause stops sending audio (AudioContext suspended; the mic stays open and the indicator says so); Stop releases the mic (e2e checks every track has ended)
+- [x] Denying permission shows a clear error and returns to Idle
+- [x] Resume tests from ARCHITECTURE §6.3 that apply to Phase 2: resume replays missed finals without duplicates; missing frames produce a gap marker; resume after the grace period or from another login is refused; a failed resume stops capture. The answer-related ones (mid-answer drop, duplicate `questionId`) belong to Phase 4.
+- [x] Terminal failure stops all media tracks and hides the indicator (e2e: resume refused, close code 4401)
+- [x] Transcript is held in memory only; nothing is written to IndexedDB (no storage code exists)
+- [x] Unit tests: STT adapter interface, simulated transcript sequencing, PCM conversion, frame seq encoding
+- [x] **E2E (Playwright, Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`):** login → start → simulated transcript appears → stop → assert tracks ended and indicator hidden; permission-denied path shows error; logout during capture → tracks ended, indicator hidden, login shown
 
 **Risks:** AudioWorklet loading under Vite; sample-rate differences across devices; cookie `Secure` flag on non-HTTPS localhost in tests (Chromium treats localhost as secure; verify).
 

@@ -9,14 +9,15 @@
   },
   "scripts": {
     "dev": "pnpm run --parallel \"/^dev:/\"",
-    "dev:server": "node --watch server/src/index.ts",
+    "dev:server": "node --env-file-if-exists=.env --watch server/src/index.ts",
     "dev:client": "vite",
     "build": "vite build && tsc -p tsconfig.build.json",
-    "start": "NODE_ENV=production node dist/server/src/index.js",
+    "start": "NODE_ENV=production node --env-file-if-exists=.env dist/server/src/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "lint": "eslint . && pnpm typecheck",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "hash-passphrase": "node scripts/hash-passphrase.ts"
   },
   "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
   "dependencies": {
