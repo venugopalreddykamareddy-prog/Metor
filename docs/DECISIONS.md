@@ -114,7 +114,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 2. **Simulated first.** `SimulatedSTT` (Phase 2) and `SimulatedAnswer` (Phase 4) are full adapters used for development, CI, and demos.
 3. **Groq free tier is the default real provider** for transcription (Whisper models) and answers (chat models), subject to Phase 3/4 evaluation.
 4. **Browser Web Speech API is evaluated** as a zero-key transcription option, with documented browser and audio-source limits. On-device mode (`processLocally`) is **not** used, because it downloads a language pack to the local machine.
-5. **Gemini free tier is optional** and restricted: Google's unpaid-service terms say not to submit sensitive, confidential, or personal information, and content may be used to improve products and read by human reviewers. With `ANSWER_PROVIDER=gemini`, the server **refuses to send KB/resume content**, live meeting/interview modes are blocked, and `GEMINI_FREE_TIER_DATA_ACK=true` is required.
+5. **Gemini free tier is optional** and restricted: Google's unpaid-service terms say not to submit sensitive, confidential, or personal information, and content may be used to improve products and read by human reviewers. With `ANSWER_PROVIDER=gemini`, the server **refuses to send KB/resume content**, live meeting/interview modes are blocked, and `GEMINI_FREE_TIER_DATA_ACK=true` is required. The acknowledgement also covers the region rule: the free tier must not serve end users in the EEA, Switzerland, or the UK.
 6. **Paid providers are disabled by default.** `ALLOW_PAID_PROVIDERS=false`. With it false, the server refuses to start if a paid adapter is configured and `DAILY_SPEND_LIMIT_USD` must be `0`. No paid adapter is implemented in the MVP; adding one needs its own ADR.
 7. **No automatic fallback to a paid provider, ever.** On free-tier quota exhaustion the feature pauses with a clear message and reset time. The user may switch manually to simulated mode or another configured free provider. Even with `ALLOW_PAID_PROVIDERS=true`, a switch to a paid provider is always a manual choice.
 8. **Authentication before any real cloud API**, free or paid, including Web Speech (which sends audio to the browser vendor's service in server-based mode). See ADR-007.
@@ -125,7 +125,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 |---|---|---|
 | Groq STT | Models `whisper-large-v3-turbo`, `whisper-large-v3`. Endpoint `POST https://api.groq.com/openai/v1/audio/transcriptions` (file upload; no streaming documented). Formats include wav, webm, flac. Free-tier file limit 25 MB. Each request is billed/counted as at least 10 s. | console.groq.com/docs/speech-to-text |
 | Groq limits | Whisper models listed at 20 RPM, 2K RPD, 7.2K audio-seconds/hour, 28.8K audio-seconds/day. Limits are per organization. The page labels its table as "Developer plan" base limits, so the free-tier values must be read from the account's limits page. Over limit: HTTP 429 with `retry-after`. | console.groq.com/docs/rate-limits |
-| Groq chat models | Production: `llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b`. | console.groq.com/docs/models |
+| Groq chat models | Listed as production: `llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b`. The rate-limits page lists limits only for `openai/gpt-oss-*` (30 RPM, 1K RPD, 8K TPM, 200K TPD) and some preview models, **not** for the Llama models, so their free-tier availability is TODO(verify). Prefer `openai/gpt-oss-20b` (classify) and `openai/gpt-oss-120b` (answers) as Phase 4 candidates. | console.groq.com/docs/models, /rate-limits |
 | Groq data | No retention of inference inputs/outputs by default; may log up to 30 days for reliability/abuse; Zero Data Retention toggle available to all customers. Training use not stated — TODO(verify). | console.groq.com/docs/your-data |
 | Groq billing | Upgrading to the paid tier requires adding a payment method. Spend limits on the paid tier: hard-cap behavior not stated. | console.groq.com/docs/billing-faqs |
 | Gemini free tier | Many models list a free tier; free-tier content is "used to improve our products" (paid: no). Limits are per project, RPD resets at midnight Pacific; view them in AI Studio. EEA/Switzerland/UK end users require paid services. Must be 18+. | aistudio.google.com/docs/pricing, /rate-limits, /terms |
@@ -133,7 +133,9 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:**
 
-- Groq transcription returns **finals per utterance** (no interim partials). NFR-1 partial latency applies only to streaming-capable sources (Web Speech interim results). Groq latency is measured and recorded separately.
+- Groq transcription returns **finals per utterance** (no interim partials). NFR-1 partial latency applies only to streaming-capable sources (Web Speech interim results). Groq latency is measured and recorded separately, and end-to-end answer latency has a per-provider target (NFR-2b).
+- Segments must be ≥ 8 s in normal speech, or the 10 s minimum per request exhausts the hourly audio quota (ARCHITECTURE §4.3).
+- A billing-enabled provider account would silently make the same key paid. Mitigations: local quotas from published free-tier limits, shadow-cost tracking, and a tier check if the provider exposes one (ARCHITECTURE §5.5).
 - Free-tier quotas cap daily use; the UI must show remaining quota and reset times.
 - Web Speech transcripts come from the browser, not the server, so the server cannot rate-limit them; they cost nothing, but audio goes to the browser vendor under its policy.
 - Gemini cannot be used for resume-grounded answers on the free tier.

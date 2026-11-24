@@ -112,7 +112,8 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 | ID | Category | Target |
 |---|---|---|
 | NFR-1 | Partial transcript latency (speech → text on screen) | p50 < 1.0 s, p95 < 2.0 s for streaming sources (Web Speech interim results). Groq returns finals per utterance; its end-of-utterance → final latency is measured and recorded, target p50 < 2.0 s. |
-| NFR-2 | Time to first answer token (question end → first token) | p50 < 1.5 s, p95 < 3.0 s |
+| NFR-2 | Time to first answer token, measured from the question's **final transcript** to the first token | p50 < 1.5 s, p95 < 3.0 s |
+| NFR-2b | End-to-end: question end (speech stops) → first answer token, per STT provider | Web Speech: p50 < 2.5 s. Groq: p50 < 3.5 s (includes per-utterance transcription, NFR-1). Measured and recorded in Phases 3–4. |
 | NFR-3 | Duplicate AI requests per detected question | 0 |
 | NFR-4 | Browser memory for a 60-min session | < 300 MB tab |
 | NFR-5 | Local storage per 60-min session (text only) | < 2 MB |

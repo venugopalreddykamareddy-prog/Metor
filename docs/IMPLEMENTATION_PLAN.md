@@ -179,7 +179,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. The server refuses to start with any real provider unless `APP_PASSPHRASE_HASH` is set.
 
-**Key tasks:** re-verify official docs for Groq (endpoint, models, formats, free-tier limits from the account limits page, data policy, ZDR) and Web Speech (browser support, `start(audioTrack)`, vendor data policy); implement the **spend + quota ledger (ARCHITECTURE §11.1) before the first real provider call**, including conservative reservations for unknown usage; implement `GroqSTT` (silence-bounded segments, WAV header, ≥10 s accounting, 429/`retry-after` → `quota_exhausted`); implement the `webspeech` client adapter behind login (mic, plus Chromium tab track if it works; restart on end; no `processLocally`); compare both on 3 test recordings (accuracy on technical terms, latency) and record results; decide ADR-005; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
+**Key tasks:** re-verify official docs for Groq (endpoint, models, formats, free-tier limits from the account limits page, data policy, ZDR) and Web Speech (browser support, `start(audioTrack)`, vendor data policy); implement the **spend + quota ledger (ARCHITECTURE §11.1) before the first real provider call**, including conservative reservations for unknown usage; implement `GroqSTT` (segment sizing per ARCHITECTURE §4.3 with a unit test of the hourly quota math, WAV header, ≥10 s accounting, rolling-window quotas, shadow cost, 429/`retry-after` → `quota_exhausted`); implement the `webspeech` client adapter behind login (mic, plus Chromium tab track if it works; restart on end; no `processLocally`); compare both on 3 test recordings (accuracy on technical terms, latency) and record results; decide ADR-005; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
 
 **Acceptance:** Groq end-of-utterance → final p50 < 2.0 s and Web Speech partial p50 < 1.0 s, measured in the debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test), keeps reservations when usage is unknown (test), and refuses calls over local quota or a non-zero spend limit; mocked provider 429 → feature pauses with reset time and **no provider switch** (test); upstream calls stop on disconnect and on logout; Web Speech unavailable until logged in (test); provider data policies re-verified in SECURITY_PRIVACY §2.2. CI never calls a real provider.
 
@@ -195,7 +195,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **No personal-experience claims yet (FR-Q8):** without a verified KB, prompts instruct general/theoretical answers. Behavioral questions get a clearly labeled example approach, never a first-person story.
 
-**Acceptance:** 0 duplicate requests in test script; first-token p50 < 1.5 s (Groq); cancel stops upstream request and keeps the reservation unless usage is reported; Gemini adapter never receives KB content (test); quota exhaustion never selects another provider (test); detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
+**Acceptance:** 0 duplicate requests in test script; final-transcript → first-token p50 < 1.5 s with `GroqAnswer` (NFR-2); end-to-end NFR-2b measured and recorded for each STT provider; cancel stops upstream request and keeps the reservation unless usage is reported; Gemini adapter never receives KB content (test); quota exhaustion never selects another provider (test); detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
 
 ---
 
@@ -252,6 +252,6 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 | E2E smoke | Playwright, Chromium only (from Phase 1) | Phase 1: load + WS echo against the built app. Phase 2: fake-media permission, start/stop, track release, denied path. Grows each phase. |
 | E2E full | Playwright (Phase 9) | Full regression with a WAV fixture via `--use-file-for-fake-audio-capture` |
 | Prompt evals | Scripted fixture set (Phase 4–6) | Grounding (no fabrication), format compliance, injection resistance |
-| Performance | Debug panel timings + scripted runs | NFR-1, NFR-2, NFR-4 |
+| Performance | Debug panel timings + scripted runs | NFR-1, NFR-2, NFR-2b, NFR-4 |
 
 CI (GitHub Actions) runs lint, typecheck, unit, integration, and (from Phase 1) Playwright smoke tests on every push. Tests never call real providers, free or paid, so they use no quota; provider adapters are mocked or simulated.

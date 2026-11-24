@@ -109,7 +109,12 @@ sequenceDiagram
 
 - Capture at device rate, resample to the provider's required rate/encoding in an AudioWorklet (commonly 16 kHz or 24 kHz mono PCM16 — **TODO(verify)** against the chosen provider).
 - Raw audio is never written to disk or IndexedDB. ("Keep recordings" is not in the MVP; adding it needs an ADR.)
-- **Groq segments:** Groq transcription is request/response (no documented streaming). The server buffers PCM16 per utterance (silence-bounded, ~3–15 s, hard cap 30 s), wraps it as WAV with a 44-byte header (no ffmpeg or audio library), and uploads it. Each request counts as at least 10 s of audio, so very short segments are merged.
+- **Groq segments:** Groq transcription is request/response (no documented streaming). The server buffers PCM16 per utterance, wraps it as WAV with a 44-byte header (no ffmpeg or audio library), and uploads it.
+- **Segment sizing (quota math):** each request counts as at least 10 s, and the listed Whisper limits are 20 requests/min and 7,200 audio-seconds/hour (Developer plan; free-tier values may be lower). Short segments break this: 3 s segments during continuous speech mean ~20 requests/min and ~12,000 counted seconds/hour, exhausting the hourly quota in ~36 minutes. Rules:
+  - Close a segment on silence **only once it holds ≥ 8 s of audio**; hard cap 30 s.
+  - Exception: a silence that ends a likely question (Groq gives no partials to run §5.2 heuristics on, so use silence ≥ 800 ms) may close a shorter segment, at most 2 per minute.
+  - Keep a rolling one-hour count of *counted* seconds (`max(len, 10 s)`); when it would exceed `FREE_QUOTA_SAFETY_RATIO` × the hourly limit, lengthen segments to the 30 s cap and warn the user; at the limit, pause with `quota_exhausted`.
+  - Worked check: 1 h of continuous speech in 10 s segments = 360 requests (6/min), 3,600 counted seconds — within both limits.
 
 ### 4.4 Browser Web Speech API (Phase 3 evaluation)
 
@@ -192,12 +197,19 @@ Model identifiers are **not** hard-coded in code. They come from env vars after 
 | `GROQ_TRANSCRIPTION_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs | empty (required when Groq is selected; classify falls back to the answer model) |
 | `GEMINI_ANSWER_MODEL` | verified model ID | empty |
 
-**Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table (all zeros for free-tier), and how it reports usage. Startup checks, in order:
+**Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table, and how it reports usage. Free-tier adapters charge $0 against `DAILY_SPEND_LIMIT_USD` but also record a **shadow cost** at the provider's paid prices, so usage that a billing-enabled account would be charged for is visible in the UI and logs.
+
+**Billing-enabled accounts are the main $0 risk.** If a payment method is added to the Groq organization or billing is enabled on the Gemini project, the same API key silently becomes paid (and Gemini's data terms change). The app cannot read billing state today, so it defends in depth:
+- Local quotas come from the **published free-tier limits** checked into server config, never from the account's limits page (a paid account shows higher limits).
+- In Phases 3–4, check whether the provider exposes the account tier (for example rate-limit headers that differ by plan). TODO(verify). If it does, refuse to run a `free-tier` adapter when the tier is not free.
+- A shadow cost above $0.50 in a UTC day shows a persistent warning: "Usage exceeds what a free account allows; check provider billing."
+
+Startup checks, in order:
 
 1. A real provider (anything except `simulated`) requires `APP_PASSPHRASE_HASH`, or the server refuses to start.
 2. A `paid` adapter requires `ALLOW_PAID_PROVIDERS=true`. With it `false`, `DAILY_SPEND_LIMIT_USD` must be `0`.
 3. A selected provider requires its key and model ID, or the server refuses to start (no silent fallback).
-4. `gemini` requires `GEMINI_FREE_TIER_DATA_ACK=true`; KB/resume content is stripped before calling it and live meeting/interview modes are refused (Google's unpaid terms forbid personal data).
+4. `gemini` requires `GEMINI_FREE_TIER_DATA_ACK=true`, which acknowledges both the data terms and the region rule (the free tier must not serve end users in the EEA, Switzerland, or the UK). KB/resume content is stripped before calling it and live meeting/interview modes are refused (Google's unpaid terms forbid personal data).
 
 **Quota exhaustion** (provider 429 / `RESOURCE_EXHAUSTED`, or the local quota in §11.1 reached): stop that feature, emit `limit.reached { kind: "free_quota", provider, resetAt? }`, keep the transcript, and show "Free quota reached — resets at …; switch to Simulated or another free provider." Honor `retry-after`. **Never switch providers automatically**, and never to a paid one.
 
@@ -366,7 +378,7 @@ The daily cap must survive reconnects and server restarts, and it must cover **e
 | Reserve | Before an upstream call, reserve the **maximum** estimated cost and quota: LLM = prompt tokens + `max_tokens`; Groq STT = `max(segment seconds, 10 s)` rounded up. Paid prices × units for USD (free-tier prices are 0). If `actual + reserved + new > DAILY_SPEND_LIMIT_USD`, or a local quota would be exceeded, refuse with `limit_reached` / `quota_exhausted`. |
 | Reconcile | On completion, replace the reservation with actual usage from the provider's response. **If usage is unknown** (not reported, abort, timeout, network error after the request was sent), **keep the full reservation** as spent. Release only when the request provably never left the server (validation failure, connection refused before send). |
 | Crash recovery | Reservations still open at startup are converted to actual (conservative: assume fully spent). |
-| Local quotas | `FREE_QUOTA_SAFETY_RATIO` (default 0.8) × the provider's free-tier limits, entered in server config from the account's limits page at Phase 3/4 start. Counted per UTC day (conservative relative to provider reset times). Provider 429 overrides local counts. |
+| Local quotas | `FREE_QUOTA_SAFETY_RATIO` (default 0.8) × the provider's **published free-tier** limits, checked into server config at Phase 3/4 start (not read from the account page). Counted over **rolling windows** (last 60 s, last hour, last 24 h), which is conservative whatever fixed reset time the provider uses (Gemini resets at midnight Pacific; Groq's reset is undocumented). The ledger keeps per-minute buckets for the last 24 h to compute this. A provider 429 overrides local counts. |
 | Prices | Per-model price table in server config, verified against official pricing in Phases 3–4. Unknown model → refuse to call it. |
 | Limitations (documented, not hidden) | Costs are **estimates** and can differ from provider billing. The single-file design assumes **one server process**; multiple instances need a shared store (ADR). Deleting the file resets the count. |
 | Provider budgets | **Not assumed to be hard caps.** Many provider "budgets" only send alerts, and billing data can lag. If a paid provider is ever enabled, set its console alert or limit too, and verify (Phase 3/4 docs) whether it blocks requests or only notifies. The free-tier default needs no budget because no payment method is attached. |

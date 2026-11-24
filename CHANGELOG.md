@@ -21,3 +21,4 @@ All notable changes to this project are documented here. Format based on [Keep a
 - README: Playwright smoke tests start in Phase 1; free-first stack summary.
 - AGENTS.md and Copilot instructions: development constraints (Codespaces/Actions only, no local models, minimal dependencies) and free-first provider rules.
 - NFR-1 split into streaming (Web Speech) and per-utterance (Groq) latency targets.
+- From review of bb58f54: Groq segments ≥ 8 s with hourly quota math; NFR-2 measured from the final transcript plus per-provider end-to-end target NFR-2b; shadow-cost tracking and published free-tier quotas to guard against billing-enabled accounts; rolling-window quota counting; Groq Llama free-tier availability marked TODO(verify); Gemini acknowledgement covers the EEA/Switzerland/UK rule.
