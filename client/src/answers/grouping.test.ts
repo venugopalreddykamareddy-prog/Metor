@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextTurns, earlierTopics, groupAnswers } from './grouping.ts';
+import { contextTurns, earlierTopics, groupAnswers, needsContext } from './grouping.ts';
 import type { AnswerCard } from './useAnswers.ts';
 
 function card(questionId: string, sourceId: string, sentAt: number, extra: Partial<AnswerCard> = {}): AnswerCard {
@@ -19,6 +19,9 @@ function card(questionId: string, sourceId: string, sentAt: number, extra: Parti
     firstTextAt: null,
     serverFirstTokenMs: null,
     totalMs: null,
+    usage: null,
+    truncated: false,
+    cached: false,
     ...extra,
   };
 }
@@ -81,5 +84,26 @@ describe('earlierTopics', () => {
   it('skips questions with no finished answer', () => {
     const cards = [card('a', 'q1', 1, { status: 'cancelled' }), card('b', 'q2', 2), card('c', 'q3', 3), card('d', 'q4', 4), card('e', 'q5', 5)];
     expect(earlierTopics(cards, 3)).toEqual(['Question q2?']);
+  });
+});
+
+describe('needsContext', () => {
+  it.each([
+    ['How would you scale it?', false],
+    ['And what if two paths have the same local preference?', false],
+    ['Which one would you use for a slow-starting Java app?', false],
+    ['Why not?', false],
+    ['What about OSPF?', false],
+    ['Anything else?', false],
+  ])('sends context for "%s"', (q, followUp) => {
+    expect(needsContext(q, followUp)).toBe(true);
+  });
+
+  it.each([
+    'How does BGP choose the best path between multiple routes to the same prefix?',
+    'What is the difference between an SLI, an SLO, and an SLA?',
+    'How would you troubleshoot high CPU usage on a Linux server?',
+  ])('sends a self-contained question alone: %s', (q) => {
+    expect(needsContext(q, false)).toBe(false);
   });
 });

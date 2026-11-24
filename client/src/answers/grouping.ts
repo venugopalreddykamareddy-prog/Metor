@@ -76,3 +76,19 @@ export function earlierTopics(cards: AnswerCard[], fullTurns: number, maxChars =
   }
   return kept;
 }
+
+// Words that point back at something said earlier ("how would you scale it?").
+const BACK_REFERENCE = /\b(?:it|its|it's|that|this|those|these|they|them|their|instead|also|either|both|one|ones|former|latter)\b/i;
+const CONTINUATION = /^(?:and|but|so|or|what about|how about|why not|what if|then|also|okay so)\b/i;
+
+/**
+ * Does this question need earlier turns to be understood? Follow-ups, continuations, back-references
+ * and very short questions do; a self-contained question goes alone (fewer tokens per request).
+ */
+export function needsContext(question: string, isFollowUp: boolean): boolean {
+  if (isFollowUp) return true;
+  const text = question.trim();
+  if (CONTINUATION.test(text)) return true;
+  if (text.split(/\s+/).length <= 5) return true;
+  return BACK_REFERENCE.test(text);
+}

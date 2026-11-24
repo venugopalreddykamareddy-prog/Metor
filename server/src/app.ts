@@ -9,6 +9,7 @@ import { registerAuthRoutes } from './auth/routes.ts';
 import { AuthSessions } from './auth/sessions.ts';
 import { createGroqAnswer } from './answer/groq.ts';
 import { createSimulatedAnswer } from './answer/simulated.ts';
+import { AnswerStats } from './answer/stats.ts';
 import type { AnswerProvider } from './answer/types.ts';
 import { UsageLedger, type QuotaLimits } from './limits/usageLedger.ts';
 import { createGroqStt } from './stt/groq.ts';
@@ -64,6 +65,7 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     bodyLimit: MAX_PAYLOAD_BYTES,
   });
 
+  const answerStats = new AnswerStats();
   const recordings = new Recordings(config.resumeGraceMs, config.maxTranscriptionMs);
   const sessions = new AuthSessions(config.sessionTtlMs, (authId) => recordings.removeForAuth(authId));
 
@@ -83,8 +85,9 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     await Promise.all([sttLedger.load(), chatLedger.load()]);
     groq = createGroqStt({ ...config.groq, ledger: sttLedger, log: app.log, ...fetchOpt });
     const { apiKey } = config.groq;
-    answerProviders['groq-120b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-120b', log: app.log, ...fetchOpt });
-    answerProviders['groq-20b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-20b', log: app.log, ...fetchOpt });
+    const reasoningEffort = config.answerReasoningEffort;
+    answerProviders['groq-120b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-120b', log: app.log, reasoningEffort, ...fetchOpt });
+    answerProviders['groq-20b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-20b', log: app.log, reasoningEffort, ...fetchOpt });
     const ledgers = [sttLedger, chatLedger];
     app.addHook('onClose', () => Promise.all(ledgers.map((l) => l.flush())).then(() => undefined));
   }
@@ -100,13 +103,15 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     allowedOrigins: config.allowedOrigins,
     providers: { groq: groq !== undefined },
     usage: () => {
-      if (!sttLedger || !chatLedger) return { groq: null };
+      if (!sttLedger || !chatLedger) return { groq: null, answerTokens: answerStats.snapshot() };
       const windows = (l: UsageLedger) => ({ lastMinute: l.usedInLast(1), lastHour: l.usedInLast(60), lastDay: l.usedInLast(24 * 60) });
       return {
         groq: {
           transcription: { ...windows(sttLedger), limits: scaled(GROQ_WHISPER_LIMITS, config.freeQuotaRatio), unit: 'audio seconds' },
           answers: { ...windows(chatLedger), limits: scaled(GROQ_CHAT_LIMITS, config.freeQuotaRatio), unit: 'tokens' },
         },
+        // Since server start, per engine; counts only, no question text.
+        answerTokens: answerStats.snapshot(),
       };
     },
   });
@@ -115,7 +120,14 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     sessions,
     recordings,
     stt: { simulated: createSimulatedStt, ...(groq ? { groq } : {}) },
-    answers: { providers: answerProviders, ledger: chatLedger, maxAnswers: config.maxAnswersPerSession, log: app.log },
+    answers: {
+      providers: answerProviders,
+      ledger: chatLedger,
+      maxAnswers: config.maxAnswersPerSession,
+      log: app.log,
+      maxTokens: config.answerMaxTokens,
+      stats: answerStats,
+    },
   });
 
   if (config.production) {

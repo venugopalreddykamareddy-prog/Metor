@@ -422,10 +422,36 @@ describe('answers', () => {
     await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'duplicate');
     conn.sendJson(ask({ engine: 'groq-120b' }));
     await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'provider_unavailable');
-    conn.sendJson(ask());
+    conn.sendJson(ask({ question: 'How does OSPF build its routing table?' }));
     await conn.waitFor((m) => m.type === 'answer.done' && m !== conn.messages.find((x) => x.type === 'answer.done'));
-    conn.sendJson(ask());
+    conn.sendJson(ask({ question: 'What is an error budget?' }));
     await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'limit_reached');
+    conn.ws.terminate();
+  });
+
+  it('reuses a cached answer for the same question and context, unless fresh is set', async () => {
+    const app = await makeApp({ maxAnswersPerSession: 2 });
+    const conn = await connect(app, await loginCookie(app));
+    const first = ask();
+    conn.sendJson(first);
+    const done1 = await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === first.questionId);
+    expect(done1).toMatchObject({ cached: false });
+
+    const again = ask({ question: 'how does BGP choose the best path' }); // same words, different punctuation
+    conn.sendJson(again);
+    const done2 = await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === again.questionId);
+    expect(done2).toMatchObject({ cached: true, usage: null });
+    const text = (id: string) => conn.messages.filter((m) => m.type === 'answer.delta' && m.questionId === id).map((m) => m.text).join('').trim();
+    expect(text(again.questionId)).toBe(text(first.questionId));
+
+    // Different context → a new request; fresh (Regenerate) → a new request too.
+    const withContext = ask({ turns: [{ question: 'What is BGP?', answer: 'A routing protocol.' }] });
+    conn.sendJson(withContext);
+    expect(await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === withContext.questionId)).toMatchObject({ cached: false });
+    const fresh = ask({ fresh: true });
+    conn.sendJson(fresh);
+    // The session limit (2) is reached, which proves fresh skipped the cache.
+    await conn.waitFor((m) => m.type === 'answer.failed' && m.questionId === fresh.questionId && m.code === 'limit_reached');
     conn.ws.terminate();
   });
 

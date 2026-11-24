@@ -1,10 +1,19 @@
 import type { AnswerRequest, ChatMessage } from './prompt.ts';
 
+/** Token counts as the provider reports them; reasoningTokens is null when not reported. */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  reasoningTokens: number | null;
+}
+
 /** A provider's streamed answer: raw text chunks (header + answer) and, if reported, token usage. */
 export interface AnswerStream {
   chunks: AsyncIterable<string>;
   /** Resolves after the stream ends; null when the provider didn't report usage. */
-  usage: Promise<{ promptTokens: number; completionTokens: number } | null>;
+  usage: Promise<TokenUsage | null>;
+  /** Resolves after the stream ends: true when the completion-token budget cut the answer off. */
+  truncated?: Promise<boolean>;
   model: string;
 }
 

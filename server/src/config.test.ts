@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hashPassphrase } from './auth/passphrase.ts';
-import { buildAllowedOrigins, loadConfig } from './config.ts';
+import { buildAllowedOrigins, loadConfig, parseAnswerMaxTokens } from './config.ts';
 
 let APP_PASSPHRASE_HASH: string;
 beforeAll(async () => {
@@ -66,5 +66,16 @@ describe('buildAllowedOrigins', () => {
     expect(origins.has('https://cs-5173.app.github.dev')).toBe(true);
     expect(origins.has('https://a.example')).toBe(true);
     expect(origins.has('')).toBe(false);
+  });
+});
+
+describe('answer token budgets', () => {
+  it('defaults to 256, 512 and 1024 and accepts an override', () => {
+    expect(parseAnswerMaxTokens(undefined)).toEqual({ short: 256, standard: 512, detailed: 1024 });
+    expect(parseAnswerMaxTokens('300, 600, 1200')).toEqual({ short: 300, standard: 600, detailed: 1200 });
+  });
+
+  it('rejects malformed values', () => {
+    for (const bad of ['512', '256,512', '1,2,3', '256,abc,1024', '256,512,99999']) expect(() => parseAnswerMaxTokens(bad)).toThrow();
   });
 });

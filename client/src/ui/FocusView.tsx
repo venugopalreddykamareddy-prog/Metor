@@ -14,7 +14,7 @@ interface Props {
   onFontSize: (v: FontSize) => void;
   onLineSpacing: (v: LineSpacing) => void;
   onCancel: (questionId: string) => void;
-  onRegenerate: (card: AnswerCard) => void;
+  onRegenerate: (card: AnswerCard, engine?: AnswerCard['engine']) => void;
   onExit: () => void;
 }
 

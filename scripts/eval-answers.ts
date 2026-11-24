@@ -16,6 +16,7 @@ import { findExperienceClaims } from '../shared/experienceClaims.ts';
 import { correctTerms } from '../shared/vocabulary.ts';
 import { GROQ_CHAT_LIMITS, scaled } from '../server/src/app.ts';
 import { AnswerSession } from '../server/src/answer/engine.ts';
+import { parseAnswerMaxTokens } from '../server/src/config.ts';
 import { summarize, styleIssues, suspectedHallucination, toCsv, type EvalQuestion, type EvalResult } from '../server/src/answer/evaluate.ts';
 import { createGroqAnswer } from '../server/src/answer/groq.ts';
 import type { AnswerRequest } from '../server/src/answer/prompt.ts';
@@ -33,7 +34,8 @@ const { values: args } = parseArgs({
     length: { type: 'string', default: 'standard' },
     out: { type: 'string', default: 'test-results/eval' },
     check: { type: 'boolean', default: false },
-    reasoning: { type: 'string', default: 'medium' },
+    reasoning: { type: 'string', default: 'low' },
+    'max-tokens': { type: 'string' },
     'confirm-free-tier': { type: 'boolean', default: false },
   },
 });
@@ -70,6 +72,9 @@ if (engine !== 'simulated') {
   providers[engine] = createGroqAnswer({ apiKey, model, log, reasoningEffort });
 }
 
+// Same default budgets as the server (ANSWER_MAX_TOKENS), unless --max-tokens overrides.
+const maxTokens = parseAnswerMaxTokens(args['max-tokens'] ?? process.env.ANSWER_MAX_TOKENS);
+
 const { questions: all } = JSON.parse(await readFile(args.file, 'utf8')) as { questions: EvalQuestion[] };
 const categories = args.category?.split(',');
 const ids = args.ids?.split(',');
@@ -80,7 +85,7 @@ console.log(`${questions.length} questions · engine ${engine} · length ${lengt
 /** Runs one request through AnswerSession and collects what the client would receive. */
 async function ask(req: AnswerRequest) {
   const got = { header: null as Extract<ServerMessageBody, { type: 'answer.header' }> | null, text: '', done: null as Extract<ServerMessageBody, { type: 'answer.done' }> | null, failed: null as Extract<ServerMessageBody, { type: 'answer.failed' }> | null };
-  const session = new AnswerSession({ providers, ledger, maxAnswers: Number.POSITIVE_INFINITY, log }, (msg) => {
+  const session = new AnswerSession({ providers, ledger, maxAnswers: Number.POSITIVE_INFINITY, log, maxTokens }, (msg) => {
     if (msg.type === 'answer.header') got.header = msg;
     else if (msg.type === 'answer.delta') got.text += msg.text;
     else if (msg.type === 'answer.done') got.done = msg;
@@ -138,6 +143,10 @@ for (const q of questions) {
     firstTokenMs: got.done?.firstTokenMs ?? null,
     totalMs: got.done?.totalMs ?? null,
     tokens: got.done?.usage ? got.done.usage.promptTokens + got.done.usage.completionTokens : null,
+    promptTokens: got.done?.usage?.promptTokens ?? null,
+    completionTokens: got.done?.usage?.completionTokens ?? null,
+    reasoningTokens: got.done?.usage?.reasoningTokens ?? null,
+    truncated: got.done?.truncated ?? false,
     error,
     style: styleIssues(answer),
     suspectedHallucination: error ? false : suspectedHallucination(q.category, answer, assessment),
@@ -160,7 +169,7 @@ const detection = {
   recall: Math.round((1000 * tp) / Math.max(1, results.filter(shouldAnswer).length)) / 10,
   missed: results.filter((r) => shouldAnswer(r) && !detected.includes(r)).map((r) => r.id),
 };
-const summary = { engine, length, reasoning: engine === 'simulated' ? null : args.reasoning, date: new Date().toISOString(), detection, ...summarize(results) };
+const summary = { engine, length, reasoning: engine === 'simulated' ? null : args.reasoning, maxTokens, date: new Date().toISOString(), detection, ...summarize(results) };
 
 await mkdir(args.out, { recursive: true });
 const stem = `${args.out}/answers-${engine}-${summary.date.slice(0, 10)}`;

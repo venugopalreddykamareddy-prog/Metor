@@ -43,6 +43,8 @@ const answerRequest = z.strictObject({
   /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
   earlier: z.array(z.string().max(300)).max(10).optional(),
   isFollowUp: z.boolean(),
+  /** Regenerate: skip the answer cache and make a new request. */
+  fresh: z.boolean().optional(),
 });
 
 // Client → server
@@ -109,7 +111,18 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     /** Server receipt of the request → first answer text (after the header). */
     firstTokenMs: z.number().min(0).nullable(),
     totalMs: z.number().min(0),
-    usage: z.strictObject({ promptTokens: z.number().int().min(0), completionTokens: z.number().int().min(0) }).nullable(),
+    /** As reported by the provider; null when not reported. reasoningTokens is part of completionTokens. */
+    usage: z
+      .strictObject({
+        promptTokens: z.number().int().min(0),
+        completionTokens: z.number().int().min(0),
+        reasoningTokens: z.number().int().min(0).nullable(),
+      })
+      .nullable(),
+    /** The completion-token budget ran out before the answer finished. */
+    truncated: z.boolean(),
+    /** Replayed from this session's answer cache; no provider request was made. */
+    cached: z.boolean(),
   }),
   z.strictObject({
     type: z.literal('answer.failed'),

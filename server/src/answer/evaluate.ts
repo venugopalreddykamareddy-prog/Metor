@@ -27,6 +27,10 @@ export interface EvalResult {
   firstTokenMs: number | null;
   totalMs: number | null;
   tokens: number | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  reasoningTokens?: number | null;
+  truncated?: boolean;
   error: string | null;
   style: string[];
   /** Fabricated / experience-trap answer that doesn't clearly decline, or any claimed experience. */
@@ -118,6 +122,9 @@ export interface EvalSummary {
   styleIssues: Record<string, number>;
   firstTokenP50Ms: number | null;
   firstTokenP95Ms: number | null;
+  /** Provider-reported averages over answers that reported usage. */
+  tokensPerAnswer: { n: number; prompt: number | null; completion: number | null; reasoning: number | null; total: number | null };
+  truncated: string[];
   byCategory: Record<string, { n: number; assessmentCorrect: number }>;
 }
 
@@ -154,6 +161,21 @@ export function summarize(results: EvalResult[]): EvalSummary {
     emptyAnswers: answered.filter((r) => r.category !== 'irrelevant' && r.answer.trim() === '').map((r) => r.id),
     styleIssueRate: pct(styled.filter((r) => r.style.length > 0).length, styled.length),
     styleIssues: styleCounts,
+    tokensPerAnswer: (() => {
+      const withUsage = answered.filter((r) => r.tokens !== null);
+      const avg = (xs: (number | null | undefined)[]) => {
+        const v = xs.filter((x): x is number => typeof x === 'number');
+        return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+      };
+      return {
+        n: withUsage.length,
+        prompt: avg(withUsage.map((r) => r.promptTokens)),
+        completion: avg(withUsage.map((r) => r.completionTokens)),
+        reasoning: avg(withUsage.map((r) => r.reasoningTokens)),
+        total: avg(withUsage.map((r) => r.tokens)),
+      };
+    })(),
+    truncated: results.filter((r) => r.truncated).map((r) => r.id),
     firstTokenP50Ms: percentile(firstTokens, 0.5),
     firstTokenP95Ms: percentile(firstTokens, 0.95),
     byCategory,

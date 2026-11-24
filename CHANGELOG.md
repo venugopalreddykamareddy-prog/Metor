@@ -18,6 +18,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Local rolling summary: questions older than the last three turns go along as `earlier` (≤ 800 characters), with no extra request.
 - First Groq evaluation (28 of 113 questions plus a 6-question re-check) in `eval/results/` and docs/ANSWER_EVALUATION.md; owner's fourth manual test recorded in docs/STT_EVALUATION.md.
 
+- Token optimization: GPT-OSS 20B with low reasoning effort by default and 120B selectable or per answer ("Regenerate with 120B"); completion budgets 256 / 512 / 1024 (`ANSWER_MAX_TOKENS`) and effort (`ANSWER_REASONING_EFFORT`) configurable; system prompt 6.5K → 3.0K characters; earlier turns sent only when the question needs them (answers trimmed to 600 characters); a per-connection answer cache (memory only) replays repeats with no request, and Regenerate bypasses it; cut-off answers are marked. Measured ~2.0K → ~1.0K tokens per answer on the same questions, with weaker premise checking (docs/ANSWER_EVALUATION.md).
+- Token tracking: input, output and reasoning tokens per answer (where Groq reports them) on each card, in `/api/usage` per engine since server start, and in the evaluation; the settings bar shows the free-tier requests and tokens left today and the average tokens per answer.
+
 ### Fixed
 
 - Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.

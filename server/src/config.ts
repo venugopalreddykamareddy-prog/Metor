@@ -13,6 +13,10 @@ export interface ServerConfig {
   usageLedgerPath: string;
   freeQuotaRatio: number;
   groq: { apiKey: string; model: string } | null;
+  /** Completion-token budget per answer length (includes hidden reasoning tokens). */
+  answerMaxTokens: { short: number; standard: number; detailed: number };
+  /** GPT-OSS reasoning effort for answers. */
+  answerReasoningEffort: 'low' | 'medium' | 'high';
 }
 
 const DEV_CLIENT_PORT = 5173;
@@ -64,6 +68,22 @@ function positiveNumber(env: NodeJS.ProcessEnv, name: string, fallback: number):
   return value;
 }
 
+/** "256,512,1024" → budgets for short, standard, detailed. */
+export function parseAnswerMaxTokens(raw: string | undefined): ServerConfig['answerMaxTokens'] {
+  if (raw === undefined || raw.trim() === '') return { short: 256, standard: 512, detailed: 1024 };
+  const n = raw.split(',').map((v) => Number(v.trim()));
+  if (n.length !== 3 || n.some((v) => !Number.isInteger(v) || v < 64 || v > 8192)) {
+    throw new Error(`Invalid ANSWER_MAX_TOKENS: ${raw} (expected three integers 64–8192, e.g. 256,512,1024)`);
+  }
+  return { short: n[0] as number, standard: n[1] as number, detailed: n[2] as number };
+}
+
+function parseEffort(raw: string | undefined): ServerConfig['answerReasoningEffort'] {
+  if (raw === undefined || raw === '') return 'low';
+  if (raw === 'low' || raw === 'medium' || raw === 'high') return raw;
+  throw new Error(`Invalid ANSWER_REASONING_EFFORT: ${raw} (low, medium or high)`);
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const port = parsePort(env.PORT, 8787);
   checkProviders(env);
@@ -84,6 +104,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     usageLedgerPath: env.SPEND_LEDGER_PATH || './data/usage-ledger.json',
     freeQuotaRatio: Math.min(1, positiveNumber(env, 'FREE_QUOTA_SAFETY_RATIO', 0.8)),
     // Transcription mode and answer engine are picked in the UI; Groq is offered only when a key is set.
+    answerMaxTokens: parseAnswerMaxTokens(env.ANSWER_MAX_TOKENS),
+    answerReasoningEffort: parseEffort(env.ANSWER_REASONING_EFFORT),
     groq: env.GROQ_API_KEY
       ? { apiKey: env.GROQ_API_KEY, model: env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo' }
       : null,

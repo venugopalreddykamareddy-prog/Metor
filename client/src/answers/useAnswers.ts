@@ -3,7 +3,7 @@ import type { AnswerHeader } from '../../../shared/answerFormat.ts';
 import type { AnswerEngine, AnswerLength, ClientMessageBody } from '../../../shared/messages.ts';
 import type { DetectedQuestion } from '../questions/tracker.ts';
 import type { AnswerMessage } from '../session/useRecorder.ts';
-import { contextTurns, earlierTopics } from './grouping.ts';
+import { contextTurns, earlierTopics, needsContext } from './grouping.ts';
 
 export interface AnswerCard {
   questionId: string;
@@ -23,10 +23,14 @@ export interface AnswerCard {
   firstTextAt: number | null;
   serverFirstTokenMs: number | null;
   totalMs: number | null;
+  usage: { promptTokens: number; completionTokens: number; reasoningTokens: number | null } | null;
+  truncated: boolean;
+  cached: boolean;
 }
 
 const CONTEXT_TURNS = 3;
-const CONTEXT_ANSWER_CHARS = 1200;
+// Earlier answers are trimmed: the model needs the gist, not the full text (fewer input tokens).
+const CONTEXT_ANSWER_CHARS = 600;
 // Matches the server's default MAX_ANSWERS_PER_SESSION, so a session's answers are all kept.
 const MAX_CARDS = 100;
 
@@ -39,11 +43,12 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
     setCards((cs) => cs.map((c) => (c.questionId === questionId ? fn(c) : c)));
 
   const ask = useCallback(
-    (q: DetectedQuestion, engine: AnswerEngine, length: AnswerLength): boolean => {
+    (q: DetectedQuestion, engine: AnswerEngine, length: AnswerLength, fresh = false): boolean => {
       const questionId = crypto.randomUUID();
-      // Recent finished answers give the model context for follow-ups.
-      const turns = contextTurns(cardsRef.current, CONTEXT_TURNS, CONTEXT_ANSWER_CHARS);
-      const earlier = earlierTopics(cardsRef.current, CONTEXT_TURNS);
+      // Earlier turns only when the question leans on them; never the whole transcript.
+      const withContext = needsContext(q.text, q.kind === 'follow_up');
+      const turns = withContext ? contextTurns(cardsRef.current, CONTEXT_TURNS, CONTEXT_ANSWER_CHARS) : [];
+      const earlier = withContext ? earlierTopics(cardsRef.current, CONTEXT_TURNS) : [];
       const sent = send({
         type: 'answer.request',
         questionId,
@@ -55,6 +60,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         turns,
         ...(earlier.length ? { earlier } : {}),
         isFollowUp: q.kind === 'follow_up',
+        ...(fresh ? { fresh: true } : {}),
       });
       if (!sent) return false;
       const now = Date.now();
@@ -74,6 +80,9 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         firstTextAt: null,
         serverFirstTokenMs: null,
         totalMs: null,
+        usage: null,
+        truncated: false,
+        cached: false,
       };
       setCards((cs) => [...cs.slice(-(MAX_CARDS - 1)), card]);
       return true;
@@ -102,6 +111,9 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
           model: msg.model,
           serverFirstTokenMs: msg.firstTokenMs,
           totalMs: msg.totalMs,
+          usage: msg.usage,
+          truncated: msg.truncated,
+          cached: msg.cached,
         }));
         break;
       case 'answer.failed':

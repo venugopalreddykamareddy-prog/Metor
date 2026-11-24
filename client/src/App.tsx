@@ -45,7 +45,7 @@ const MODE_LABEL: Record<TranscriptionMode, string> = {
 };
 const ENGINE_LABEL: Record<AnswerEngine, string> = {
   simulated: 'Simulated (not AI)',
-  'groq-120b': 'Groq GPT-OSS 120B',
+  'groq-120b': 'Groq GPT-OSS 120B (harder questions)',
   'groq-20b': 'Groq GPT-OSS 20B',
 };
 
@@ -65,9 +65,10 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
     ...(speechRecognitionCtor() ? (['webspeech'] as const) : []),
     ...(me.providers.groq ? (['groq'] as const) : []),
   ];
-  const engines: AnswerEngine[] = me.providers.groq ? ['groq-120b', 'groq-20b', 'simulated'] : ['simulated'];
+  // GPT-OSS 20B is the default (fewer tokens); 120B is there for harder questions.
+  const engines: AnswerEngine[] = me.providers.groq ? ['groq-20b', 'groq-120b', 'simulated'] : ['simulated'];
   const [mode, setMode] = useSetting<TranscriptionMode>('mode', available, 'simulated');
-  const [engine, setEngine] = useSetting<AnswerEngine>('engine', engines, engines[0] ?? 'simulated');
+  const [engine, setEngine] = useSetting<AnswerEngine>('answerEngine', engines, engines[0] ?? 'simulated');
   const [length, setLength] = useSetting<AnswerLength>('length', ['short', 'standard', 'detailed'], 'standard');
   const [autoAnswer, setAutoAnswer] = useSetting<'on' | 'off'>('autoAnswer', ['on', 'off'], 'on');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -90,7 +91,8 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   );
 
   const questions = useQuestions(clean, autoAnswer === 'on', (q) => answers.ask(q, engine, length));
-  const regenerate = (card: AnswerCard) => {
+  /** Always a new request (skips the answer cache); optionally with another engine. */
+  const regenerate = (card: AnswerCard, withEngine?: AnswerEngine) => {
     const q: DetectedQuestion = {
       id: card.sourceId,
       text: card.question,
@@ -100,7 +102,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       spokenAt: Date.now(),
       firstSeenAt: Date.now(),
     };
-    answers.ask(q, engine, length);
+    answers.ask(q, withEngine ?? engine, length, true);
   };
 
   // One entry per question; regenerated answers are kept as versions (grouping.ts).
@@ -238,8 +240,13 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
         )}
         {usage?.groq && (
           <span className="muted" data-testid="usage">
-            Groq answers today: {usage.groq.answers.lastDay.requests}/{usage.groq.answers.limits.perDay.requests} requests ·{' '}
-            {Math.round(usage.groq.answers.lastDay.units / 1000)}k/{Math.round(usage.groq.answers.limits.perDay.units / 1000)}k tokens
+            Groq free tier left today: {Math.max(0, usage.groq.answers.limits.perDay.requests - usage.groq.answers.lastDay.requests)} requests ·{' '}
+            {(Math.max(0, usage.groq.answers.limits.perDay.units - usage.groq.answers.lastDay.units) / 1000).toFixed(1)}k tokens
+            {(() => {
+              const t = usage.answerTokens?.[engine];
+              const avg = t?.averagePerAnswer.total;
+              return avg ? ` · ${avg} tokens per answer on average (n=${t.withUsage}${t.cached ? `, ${t.cached} from cache` : ''})` : '';
+            })()}
           </span>
         )}
       </div>

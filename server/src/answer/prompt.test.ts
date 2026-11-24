@@ -25,13 +25,22 @@ describe('buildMessages', () => {
   });
 
   it('asks for a spoken, conversational style rather than textbook text', () => {
-    for (const phrase of ['contractions', "Don't open with a dictionary definition", 'No markdown', 'Great question', 'plays a crucial role', 'Spoken, aim for']) {
+    for (const phrase of ['contractions', 'No dictionary-definition opener', 'no markdown', 'Great question', 'plays a crucial role', 'Spoken (aim for)']) {
       expect(system).toContain(phrase);
     }
-    // Examples are framed as hypotheticals, never as the candidate's own history, in any answer.
-    expect(system).toContain('never as something the candidate did');
-    expect(system).toContain('This applies to every answer, whatever its TYPE');
-    expect(system).toContain("\"What's your experience with X?\" is an experience question");
+  });
+
+  it('forbids claimed experience in every answer and keeps every validation label', () => {
+    expect(system).toContain('In every answer, say what you would do');
+    expect(system).toContain("what's your experience with X");
+    for (const label of ['incorrect_premise', 'unrecognized_term', 'possible_transcription_error', 'clarification_needed', 'unrealistic_requirement', 'insufficient_information', 'unverified_experience', 'off_topic']) {
+      expect(system).toContain(`${label}`);
+    }
+    expect(system).toContain('If NOTE names a problem, ASSESSMENT must not be none.');
+  });
+
+  it('keeps the system prompt concise', () => {
+    expect(system.length).toBeLessThan(3200);
   });
 
   it('wraps interviewer text as data and states the length', () => {

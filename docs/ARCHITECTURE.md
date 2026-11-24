@@ -305,7 +305,8 @@ Model identifiers are **not** hard-coded in code. They come from env vars after 
 | `ANSWER_PROVIDER` | `simulated`, `groq`, `gemini` | `simulated` |
 | `ALLOW_PAID_PROVIDERS` | `true`, `false` | `false` |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3-turbo` or `whisper-large-v3` (verified 2026-11-24) | `whisper-large-v3-turbo` |
-| `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs (Phase 4) | empty |
+| `ANSWER_REASONING_EFFORT` | GPT-OSS reasoning effort for answers (`low`, `medium`, `high`); the model (20B default, 120B) is picked in the UI | `low` |
+| `ANSWER_MAX_TOKENS` | completion budgets for short, standard, detailed (hidden reasoning counts) | `256,512,1024` |
 | `GEMINI_ANSWER_MODEL` | verified model ID | empty |
 
 **Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table, and how it reports usage. Free-tier adapters charge $0 against `DAILY_SPEND_LIMIT_USD` but also record a **shadow cost** at the provider's paid prices, so usage that a billing-enabled account would be charged for is visible in the UI and logs.

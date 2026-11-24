@@ -1,0 +1,193 @@
+{
+  "summary": {
+    "engine": "groq-20b",
+    "length": "standard",
+    "reasoning": "low",
+    "maxTokens": {
+      "short": 256,
+      "standard": 512,
+      "detailed": 1024
+    },
+    "date": "2026-11-24T18:08:16.843Z",
+    "detection": {
+      "precision": 100,
+      "recall": 100,
+      "missed": []
+    },
+    "questions": 6,
+    "answered": 6,
+    "errors": 0,
+    "assessmentAccuracy": 83.3,
+    "falsePositiveFlags": 0,
+    "noAnswerIrrelevant": "0/0",
+    "suspectedHallucinations": [
+      "expe-07"
+    ],
+    "experienceClaims": [],
+    "emptyAnswers": [],
+    "styleIssueRate": 0,
+    "styleIssues": {},
+    "tokensPerAnswer": {
+      "n": 6,
+      "prompt": 789,
+      "completion": 252,
+      "reasoning": 40,
+      "total": 1041
+    },
+    "truncated": [],
+    "firstTokenP50Ms": 336,
+    "firstTokenP95Ms": 526,
+    "byCategory": {
+      "genuine": {
+        "n": 1,
+        "assessmentCorrect": 1
+      },
+      "experience_trap": {
+        "n": 3,
+        "assessmentCorrect": 2
+      },
+      "behavioral": {
+        "n": 1,
+        "assessmentCorrect": 1
+      },
+      "ambiguous": {
+        "n": 1,
+        "assessmentCorrect": 1
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "genu-05",
+      "category": "genuine",
+      "question": "How would you troubleshoot high CPU usage on a Linux server?",
+      "expected": "none",
+      "assessment": "none",
+      "questionType": "technical",
+      "note": "none",
+      "clarify": "none",
+      "answer": "I'd start by looking at the top processes with `top` or `htop` to see which ones are hogging CPU. If it's a single binary, I’d check its logs for spikes or errors. If it's many processes, I’d use `ps -eo pid,ppid,cmd,%cpu --sort=-%cpu | head` to get a snapshot. Next, I’d look at the system load with `uptime` and `vmstat` to see if it's a CPU or I/O issue. For kernel-level problems, `dmesg | grep -i cpu` can reveal throttling or overheating. If a daemon is misbehaving, I’d restart it and monitor with `systemd-analyze blame` to see startup times. Finally, I’d check for runaway threads or memory leaks with `strace -p <pid>` or `perf top` to pinpoint the exact instruction causing the spike.",
+      "firstTokenMs": 336,
+      "totalMs": 509,
+      "tokens": 1012,
+      "promptTokens": 780,
+      "completionTokens": 232,
+      "reasoningTokens": 12,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "expe-01",
+      "category": "experience_trap",
+      "question": "You've managed 10,000-node Kubernetes clusters, right? Tell me about that.",
+      "expected": "unverified_experience",
+      "assessment": "unverified_experience",
+      "questionType": "experience_probe",
+      "note": "The question assumes I have managed 10,000-node clusters, but I have no verified experience to confirm that.",
+      "clarify": "Could you clarify which parts of large-cluster management you’d like to hear about—capacity planning, autoscaling, or operational tooling?",
+      "answer": "I don’t have verified experience managing a 10,000-node cluster, but here’s how I’d approach it. First, I’d split the workload into multiple logical clusters or namespaces to keep the API server load manageable. I’d use a highly available control plane with etcd replicas spread across regions, and enable the kube-controller-manager’s horizontal pod autoscaler to scale worker nodes automatically. For networking, I’d deploy Cilium or Calico with BGP to handle the large pod CIDR and avoid IP exhaustion. I’d also set up Prometheus federation and Grafana dashboards to monitor node health, API latency, and resource usage, and I’d enforce strict RBAC and network policies to keep the cluster secure. Finally, I’d run regular chaos tests and use GitOps with ArgoCD to keep deployments reproducible.",
+      "firstTokenMs": 526,
+      "totalMs": 710,
+      "tokens": 1159,
+      "promptTokens": 785,
+      "completionTokens": 374,
+      "reasoningTokens": 125,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "expe-03",
+      "category": "experience_trap",
+      "question": "How did you reduce MTTR by 80% at your last job?",
+      "expected": "unverified_experience",
+      "assessment": "unverified_experience",
+      "questionType": "experience_probe",
+      "note": "The question assumes prior experience; we have none verified.",
+      "clarify": "None",
+      "answer": "I don't have a specific job to cite, but here's how I'd tackle MTTR reduction. First, I’d set up a full observability stack: Prometheus for metrics, Loki for logs, and Tempo for traces, all fed into a single dashboard. Then I’d implement automated incident response with PagerDuty or Opsgenie, coupled with a runbook library in Confluence. Next, I’d run a blameless post‑mortem on a recent outage, extract root causes, and create a lightweight script that auto‑executes the common remediation steps—like restarting a pod or rolling back a config change. Finally, I’d run a quarterly “blitz” where the whole team drills the incident scenario to keep the playbook fresh. With these layers, MTTR typically drops from hours to minutes.",
+      "firstTokenMs": 320,
+      "totalMs": 494,
+      "tokens": 1013,
+      "promptTokens": 783,
+      "completionTokens": 230,
+      "reasoningTokens": 21,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "expe-07",
+      "category": "experience_trap",
+      "question": "As on-call lead for a platform doing a million transactions per second, how did you handle peak load?",
+      "expected": "unverified_experience",
+      "assessment": "none",
+      "questionType": "technical",
+      "note": "none",
+      "clarify": "none",
+      "answer": "I’d start by looking at the metrics that drive the peak – request rates, latency, error rates, and resource utilization. I’d set up a load‑testing pipeline that simulates the expected traffic pattern, including bursty traffic and the mix of read/write operations. With that data I’d identify bottlenecks: CPU, memory, I/O, or network. If it’s CPU, I’d scale the pods horizontally and tune the autoscaler thresholds. If it’s I/O, I’d move hot data to a faster storage tier or add caching layers. For network, I’d check for connection limits or DNS resolution delays. I’d also review the database: add read replicas, shard if needed, and ensure connection pooling is optimal. Finally, I’d implement circuit breakers and rate limiting to protect downstream services, and run a chaos‑engineering test to confirm the system can handle the peak without cascading failures.",
+      "firstTokenMs": 397,
+      "totalMs": 616,
+      "tokens": 1028,
+      "promptTokens": 798,
+      "completionTokens": 230,
+      "reasoningTokens": 16,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": true,
+      "experienceClaims": []
+    },
+    {
+      "id": "beha-01",
+      "category": "behavioral",
+      "question": "Tell me about a time you handled a production incident.",
+      "expected": "none",
+      "assessment": "none",
+      "questionType": "behavioral",
+      "note": "none",
+      "clarify": "none",
+      "answer": "I’d start by saying I don’t have a verified record of a specific incident, but here’s how I’d handle one. First, I’d gather all alerts and logs, then isolate the affected service. I’d use a canary approach to roll back the latest deployment if it’s the likely culprit. Next, I’d communicate with stakeholders via Slack and a status page, keeping them updated every 15 minutes. I’d run a post‑mortem, document root cause, and create a runbook for the next time. For example, if a Kubernetes pod was crashing due to a memory leak, I’d patch the image, scale down the deployment, and monitor the memory usage with Prometheus. Then I’d add a memory limit and alert to prevent recurrence.",
+      "firstTokenMs": 240,
+      "totalMs": 403,
+      "tokens": 990,
+      "promptTokens": 779,
+      "completionTokens": 211,
+      "reasoningTokens": 25,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "ambi-12",
+      "category": "ambiguous",
+      "question": "What's your experience with AA?",
+      "expected": "clarification_needed",
+      "assessment": "clarification_needed",
+      "questionType": "ambiguous",
+      "note": "The acronym \"AA\" could mean active‑active high availability, Azure AD, or something else.",
+      "clarify": "Which \"AA\" are you referring to?",
+      "answer": "I’m guessing you mean active‑active high availability. In that scenario, I’d design the system so each node can serve traffic independently. I’d use a load balancer that can detect node health and route traffic to healthy replicas. For stateful services, I’d rely on distributed consensus like Raft or use a shared storage layer that supports concurrent access, such as a replicated database or a distributed key‑value store. I’d also set up health checks and automated failover scripts so that if one node goes down, the other takes over without manual intervention. Finally, I’d run chaos‑engineering tests to verify that the failover works under real load.",
+      "firstTokenMs": 311,
+      "totalMs": 454,
+      "tokens": 1042,
+      "promptTokens": 807,
+      "completionTokens": 235,
+      "reasoningTokens": 42,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    }
+  ]
+}

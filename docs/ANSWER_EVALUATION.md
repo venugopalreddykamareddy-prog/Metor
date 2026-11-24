@@ -92,6 +92,26 @@ Misses and weak spots, by reading the answers:
 
 Medium is the default (ADR-014).
 
+### Token use before and after optimization (2026-11-24)
+
+Provider-reported tokens per answer (Groq `usage`; the reasoning split is reported as `completion_tokens_details.reasoning_tokens` and is part of completion). Same questions before and after. Set A: ambi-12, genu-05, expe-01, expe-03, expe-07, beha-01. Set B: fabr-02, fabr-03, inco-01 to inco-04. Files: `eval/results/answers-groq-120b-2026-11-24-recheck.json` (before, set A) and `eval/results/tokens-after-*.json`. The "before" runs recorded totals only, so they have no input/output split.
+
+| Config | Set | Tokens/answer (in / out / reasoning) | Server first word p50 | Fabricated flagged | Wrong premises flagged |
+|---|---|---|---|---|---|
+| Before: 120B, medium, 6.5K-char prompt, 1,400 budget | A | 2,034 total | 1.00 s | — | — |
+| Before: 120B, medium, same prompt, 1,000 budget | B | 1,926 total | ~1.1 s | 2/2 | 2/4 |
+| Concise 3.0K-char prompt, 120B, medium, 1,400 budget | B | 1,330 (793 / 538 / 310) | 1.06 s | 2/2 | 2/4 |
+| **After (default): concise prompt, 20B, low, 512 budget** | A | 1,041 (789 / 252 / 40) | 0.34 s | — | — |
+| **After (default)** | B | 1,013 (793 / 221 / 24) | 0.36 s | 2/2 | 1/4 |
+
+- The concise prompt alone cut ~600 tokens per answer (−31% on set B) with the same validation results on these six questions.
+- 20B with low reasoning cut a further ~300 (−49% overall vs before on set A, −47% on set B) and made the first word about 3× faster. No answer hit the 512 budget (0/12 truncated).
+- **Cost in quality, by reading the answers:** with 20B-low, inco-03 accepted swapped SLA/SLO definitions and gave a wrong answer, inco-02 missed that readiness (not liveness) controls Service endpoints, and inco-04 corrected the premise in the text but labeled it `none`. On fabr-02 and fabr-03 it said it didn't recognize the feature but then suggested settings that don't exist ("a ServiceEntry that bypasses Envoy", "fast-asynchronous updates"). Set A had no claimed experience and no empty or truncated answers. Six questions per set is a small sample.
+- Context: the app used to send the last 3 turns (answers up to 1,200 characters) and older questions with every request, ~1K extra tokens (local estimate). It now sends them only for follow-ups, continuations, back-references and very short questions, with answers trimmed to 600 characters. That saving isn't in the table, because the evaluation questions have no running conversation.
+- Repeated questions with the same context are answered from a per-connection cache: no request, no tokens.
+
+For trick-heavy practice, "Regenerate with 120B" or `ANSWER_REASONING_EFFORT=medium` with `ANSWER_MAX_TOKENS=1000,1400,2200` restores the stronger premise checking: about 1.3K tokens per answer instead of 1.0K. Medium reasoning with the 256/512 budgets risks empty or cut-off answers.
+
 ### Still to do
 
 - The rest of the set (85 questions: unusual_real, misheard, irrelevant, experience_trap, follow_up, behavioral, and the remaining items in the other categories), over two days of free budget.

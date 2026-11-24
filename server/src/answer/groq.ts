@@ -1,13 +1,19 @@
 import type { FastifyBaseLogger } from 'fastify';
-import { ProviderError, type AnswerProvider } from './types.ts';
+import { ProviderError, type AnswerProvider, type TokenUsage } from './types.ts';
 
 export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const REQUEST_TIMEOUT_MS = 60_000;
 
+interface ReportedUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  // OpenAI-style breakdown; used only if Groq includes it.
+  completion_tokens_details?: { reasoning_tokens?: number } | null;
+}
 interface StreamChunk {
-  choices?: { delta?: { content?: string | null } }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
-  x_groq?: { usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  choices?: { delta?: { content?: string | null }; finish_reason?: string | null }[];
+  usage?: ReportedUsage | null;
+  x_groq?: { usage?: ReportedUsage };
 }
 
 /** Streams a chat completion from Groq (OpenAI-compatible server-sent events). */
@@ -16,10 +22,7 @@ export function createGroqAnswer(opts: {
   model: string;
   log: FastifyBaseLogger;
   fetch?: typeof fetch;
-  /**
-   * GPT-OSS reasoning effort. "medium" (default) caught wrong premises that "low" missed for about
-   * 0.3 s more to the first word (docs/ANSWER_EVALUATION.md).
-   */
+  /** GPT-OSS reasoning effort (default low; ANSWER_REASONING_EFFORT, ADR-014). */
   reasoningEffort?: 'low' | 'medium' | 'high';
 }): AnswerProvider {
   const doFetch = opts.fetch ?? fetch;
@@ -36,7 +39,7 @@ export function createGroqAnswer(opts: {
           temperature: 0.4,
           max_completion_tokens: maxTokens,
           // GPT-OSS models reason before answering (hidden; not needed in the answer).
-          reasoning_effort: opts.reasoningEffort ?? 'medium',
+          reasoning_effort: opts.reasoningEffort ?? 'low',
           include_reasoning: false,
         }),
         signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
@@ -59,14 +62,17 @@ export function createGroqAnswer(opts: {
       throw new ProviderError('provider_unavailable', `Groq returned HTTP ${res.status}.`);
     }
 
-    let resolveUsage: (u: { promptTokens: number; completionTokens: number } | null) => void = () => {};
-    const usage = new Promise<{ promptTokens: number; completionTokens: number } | null>((r) => (resolveUsage = r));
+    let resolveUsage: (u: TokenUsage | null) => void = () => {};
+    const usage = new Promise<TokenUsage | null>((r) => (resolveUsage = r));
+    let resolveTruncated: (t: boolean) => void = () => {};
+    const truncated = new Promise<boolean>((r) => (resolveTruncated = r));
     const body = res.body;
 
     async function* chunks(): AsyncGenerator<string> {
       const decoder = new TextDecoder();
       let buffer = '';
-      let reported: { promptTokens: number; completionTokens: number } | null = null;
+      let reported: TokenUsage | null = null;
+      let cutOff = false;
       try {
         for await (const bytes of body) {
           buffer += decoder.decode(bytes, { stream: true });
@@ -87,8 +93,14 @@ export function createGroqAnswer(opts: {
               // Usage location isn't documented for streams; accept either place.
               const u = chunk.x_groq?.usage ?? chunk.usage;
               if (u?.prompt_tokens !== undefined && u.completion_tokens !== undefined) {
-                reported = { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens };
+                const reasoning = u.completion_tokens_details?.reasoning_tokens;
+                reported = {
+                  promptTokens: u.prompt_tokens,
+                  completionTokens: u.completion_tokens,
+                  reasoningTokens: typeof reasoning === 'number' ? reasoning : null,
+                };
               }
+              if (chunk.choices?.[0]?.finish_reason === 'length') cutOff = true;
               const text = chunk.choices?.[0]?.delta?.content;
               if (text) yield text;
             }
@@ -96,9 +108,10 @@ export function createGroqAnswer(opts: {
         }
       } finally {
         resolveUsage(reported);
+        resolveTruncated(cutOff);
       }
     }
 
-    return { chunks: chunks(), usage, model: opts.model };
+    return { chunks: chunks(), usage, truncated, model: opts.model };
   };
 }

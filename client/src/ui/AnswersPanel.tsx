@@ -42,7 +42,7 @@ interface Props extends DisplayProps {
   groups: AnswerGroup[];
   autoScroll: boolean;
   onCancel: (questionId: string) => void;
-  onRegenerate: (card: AnswerCard) => void;
+  onRegenerate: (card: AnswerCard, engine?: AnswerCard['engine']) => void;
   onFocus: () => void;
 }
 

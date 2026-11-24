@@ -69,7 +69,7 @@ interface Props {
   group: AnswerGroup;
   display: AnswerDisplay;
   onCancel: (questionId: string) => void;
-  onRegenerate: (card: AnswerCard) => void;
+  onRegenerate: (card: AnswerCard, engine?: AnswerCard['engine']) => void;
   /** Focus mode: bigger question, no timing details. */
   focus?: boolean;
 }
@@ -155,15 +155,30 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
             Stop answer
           </button>
         ) : (
-          <button type="button" onClick={() => onRegenerate(card)} title="Keeps this answer and adds a new version">
-            Regenerate
-          </button>
+          <>
+            <button type="button" onClick={() => onRegenerate(card)} title="Keeps this answer and adds a new version">
+              Regenerate
+            </button>
+            {card.engine === 'groq-20b' && (
+              <button type="button" onClick={() => onRegenerate(card, 'groq-120b')} title="Uses the larger model for a harder question; one more request">
+                Regenerate with 120B
+              </button>
+            )}
+          </>
         )}
       </div>
+      {card.truncated && (
+        <p className="muted stopped" data-testid="answer-truncated">
+          Cut off at the token budget for this length. Try Detailed or Regenerate.
+        </p>
+      )}
       {!focus && (
         <p className="answer-meta">
           {card.length} · speech end → first word {seconds(card.firstTextAt === null ? null : card.firstTextAt - card.spokenAt)} · server first
           word {seconds(card.serverFirstTokenMs)} · total {seconds(card.totalMs)}
+          {card.cached && ' · reused from cache, no request'}
+          {card.usage &&
+            ` · tokens in ${card.usage.promptTokens} / out ${card.usage.completionTokens}${card.usage.reasoningTokens !== null ? ` (reasoning ${card.usage.reasoningTokens})` : ''}`}
         </p>
       )}
     </article>

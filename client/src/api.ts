@@ -19,8 +19,19 @@ interface Metered {
   limits: { perMinute: Window; perHour: Window; perDay: Window };
   unit: string;
 }
+export interface TokenAverages {
+  answers: number;
+  withUsage: number;
+  cached: number;
+  truncated: number;
+  totalTokens: number;
+  averagePerAnswer: { prompt: number | null; completion: number | null; reasoning: number | null; total: number | null };
+}
+
 export interface Usage {
   groq: { transcription: Metered; answers: Metered } | null;
+  /** Since the server started, per answer engine. */
+  answerTokens?: Record<string, TokenAverages>;
 }
 
 export async function fetchUsage(): Promise<Usage> {
