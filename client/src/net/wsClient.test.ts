@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WsClient, sameOriginWsUrl, type ConnectionStatus } from './wsClient.ts';
+import { CONNECT_TIMEOUT_MS, WsClient, sameOriginWsUrl, type ConnectionStatus } from './wsClient.ts';
 
 // Minimal stand-in for the browser WebSocket, installed as the global.
 class FakeSocket {
@@ -11,13 +11,14 @@ class FakeSocket {
   onmessage: ((event: { data: unknown }) => void) | null = null;
   sent: string[] = [];
   closed = false;
+  closeCode: number | undefined;
   readonly url: string;
   constructor(url: string) {
     this.url = url;
     FakeSocket.instances.push(this);
   }
   send(data: string) { this.sent.push(data); }
-  close() { this.closed = true; this.readyState = 3; }
+  close(code?: number) { this.closed = true; this.closeCode = code; this.readyState = 3; }
   open() { this.readyState = 1; this.onopen?.(); }
   drop() { this.readyState = 3; this.onclose?.(); }
   receive(data: unknown) { this.onmessage?.({ data }); }
@@ -141,6 +142,28 @@ describe('WsClient', () => {
     latest().receive(new ArrayBuffer(4));
     expect(messages).toEqual([{ type: 'echo', id: '1', ts: 2, text: 'hi' }]);
     expect(invalid).toEqual(['invalid JSON', 'non-text frame']);
+  });
+
+  it('abandons a socket that never finishes connecting and retries', () => {
+    client.start();
+    const stuck = latest();
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS - 1);
+    expect(stuck.closed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(stuck.closed).toBe(true);
+    expect(stuck.closeCode).toBe(4000);
+    expect(client.status).toBe('disconnected');
+    expect(waitForReconnect()).toBe(500);
+    latest().open();
+    expect(client.status).toBe('connected');
+  });
+
+  it('does not time out a socket that connected', () => {
+    client.start();
+    latest().open();
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS * 3);
+    expect(latest().closed).toBe(false);
+    expect(FakeSocket.instances).toHaveLength(1);
   });
 
   it('ignores a late close event from a socket it already replaced', () => {

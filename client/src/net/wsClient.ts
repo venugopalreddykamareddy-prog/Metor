@@ -1,6 +1,9 @@
 import { parseServerMessage, type ClientMessage, type ServerMessage } from '../../../shared/messages.ts';
 import { backoffDelay } from './backoff.ts';
 
+/** A socket still connecting after this long is abandoned and retried. */
+export const CONNECT_TIMEOUT_MS = 10_000;
+
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 export interface WsClientOptions {
@@ -19,6 +22,7 @@ export class WsClient {
   private readonly opts: WsClientOptions;
   private socket: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private failedAttempts = 0;
   private running = false;
   private _status: ConnectionStatus = 'disconnected';
@@ -43,13 +47,7 @@ export class WsClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    const socket = this.socket;
-    this.socket = null;
-    if (socket) {
-      // Detach first so the close event doesn't schedule a reconnect.
-      socket.onopen = socket.onclose = socket.onmessage = null;
-      socket.close(1000, 'client stopped');
-    }
+    this.dropSocket(1000, 'client stopped');
     this.setStatus('disconnected');
   }
 
@@ -71,7 +69,13 @@ export class WsClient {
       return;
     }
     this.socket = socket;
+    // A blackholed network can leave the handshake pending for minutes.
+    this.connectTimer = setTimeout(() => {
+      this.dropSocket(4000, 'connect timeout');
+      this.scheduleReconnect();
+    }, CONNECT_TIMEOUT_MS);
     socket.onopen = () => {
+      this.clearConnectTimer();
       this.failedAttempts = 0;
       this.setStatus('connected');
     };
@@ -87,9 +91,27 @@ export class WsClient {
     // Browsers always fire close after error, so reconnect is handled only here.
     socket.onclose = () => {
       if (this.socket !== socket) return;
+      this.clearConnectTimer();
       this.socket = null;
       this.scheduleReconnect();
     };
+  }
+
+  /** Closes the current socket without triggering its close handler's reconnect. */
+  private dropSocket(code: number, reason: string): void {
+    this.clearConnectTimer();
+    const socket = this.socket;
+    this.socket = null;
+    if (!socket) return;
+    socket.onopen = socket.onclose = socket.onmessage = null;
+    socket.close(code, reason);
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
   }
 
   private scheduleReconnect(): void {

@@ -29,7 +29,9 @@ pnpm exec playwright install --with-deps --only-shell chromium
 
 ## Stop the Codespace
 
-When you are done, stop the Codespace so it does not use your free monthly quota: **Code** → **Codespaces** → **⋯** → **Stop codespace**, or `gh codespace stop`. Codespaces also stop automatically after the idle timeout set in your GitHub settings.
+Stop the Codespace when you're done so it doesn't use up the free monthly hours: **Code** → **Codespaces** → **⋯** → **Stop codespace**, or `gh codespace stop`.
+
+Also set the idle timeout to **5 minutes** (the default is 30): GitHub → **Settings** → **Codespaces** → **Default idle timeout**. It applies to Codespaces created after the change. Typing, editor use, and terminal output all count as activity, and the dev server logs every request, so stop `pnpm dev` (Ctrl+C) and close the app tab when you finish.
 
 ## Ports and privacy
 
@@ -46,6 +48,6 @@ Real providers are not used until Phase 3. When they are:
 
 ## Troubleshooting
 
-- **"Blocked request. This host is not allowed"** from Vite: you are not in a Codespace, or `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` is unset. Use `http://localhost:5173`.
+- **"Blocked request. This host is not allowed"** from Vite: Vite only allows this Codespace's own `-5173` URL. Make sure you're opening port 5173 of this Codespace; outside Codespaces use `http://localhost:5173`.
 - **Status stays "Disconnected"**: check the server is running (`curl -s localhost:8787/healthz`) and that the server log does not show `ws upgrade rejected: origin not allowed`. If it does, add your page origin to `ALLOWED_ORIGINS`.
 - **Port already in use**: a previous run is still alive. `ss -ltnp | grep -E ':(5173|8787)'` shows the PID; stop it with `kill <pid>`.

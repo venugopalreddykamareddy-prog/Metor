@@ -42,20 +42,30 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 
-export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+/**
+ * `error` may quote user input (zod names unrecognized keys), so it is only sent back to the
+ * sender. `issue` is a fixed code that is safe to log.
+ */
+export type ParseResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string; issue: string };
 
 function parseWith<T>(schema: z.ZodType<T>, raw: string): ParseResult<T> {
   let data: unknown;
   try {
     data = JSON.parse(raw);
   } catch {
-    return { ok: false, error: 'invalid JSON' };
+    return { ok: false, error: 'invalid JSON', issue: 'invalid_json' };
   }
   const result = schema.safeParse(data);
   if (!result.success) {
     const issue = result.error.issues[0];
     const path = issue?.path.join('.') || '(root)';
-    return { ok: false, error: `${path}: ${issue?.message ?? 'invalid message'}` };
+    return {
+      ok: false,
+      error: `${path}: ${issue?.message ?? 'invalid message'}`,
+      issue: issue?.code ?? 'invalid',
+    };
   }
   return { ok: true, value: result.data };
 }

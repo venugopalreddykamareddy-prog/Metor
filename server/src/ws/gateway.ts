@@ -42,8 +42,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
         }
         const parsed = parseClientMessage(data.toString());
         if (!parsed.ok) {
-          // Log the validation error only, never message content.
-          request.log.debug({ error: parsed.error }, 'invalid ws message');
+          request.log.debug({ issue: parsed.issue }, 'invalid ws message');
           sendError(socket, 'bad_request', parsed.error.slice(0, 200));
           return;
         }

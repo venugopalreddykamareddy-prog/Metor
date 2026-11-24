@@ -8,9 +8,9 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 - Phase 1 foundation: single-package pnpm project (Node 24 via `.nvmrc`/`engines`, pnpm pinned in `packageManager`); Vite + React client with connection status bar, message input, and echo log; Fastify server bound to `127.0.0.1` with `GET /healthz` and WebSocket `/ws` echo.
 - Shared zod message schemas (`shared/messages.ts`) validated on every WebSocket frame; invalid JSON, schema violations, and binary frames get `error bad_request`; frames over 16 KB are closed with 1009; WebSocket upgrades require an allowed `Origin` (Codespaces forwarded URLs added automatically).
-- WebSocket client with exponential backoff and jitter (0.5 s → 8 s) and automatic reconnect.
-- Vitest unit and integration tests (47) and Playwright smoke tests against the production build (Chromium headless shell).
-- GitHub Actions CI: lint, typecheck, tests, build, client-bundle secret check, Playwright smoke tests.
+- WebSocket client with automatic reconnect (backoff with jitter, 0.5 s → 8 s) and a 10 s connect timeout.
+- Vitest unit and integration tests and Playwright smoke tests against the production build (Chromium headless shell).
+- GitHub Actions CI: lint, typecheck, tests, build, client-bundle secret check, Playwright smoke tests. Actions pinned to commit SHAs, with Dependabot updating them monthly.
 - `.devcontainer/devcontainer.json` (Node 24 image, 2-core host, only port 5173 forwarded) and `docs/DEVELOPMENT.md` (startup, shutdown, testing, troubleshooting).
 - ADR-010: Node 24 native TypeScript instead of `tsx`, `pnpm --parallel` instead of `concurrently`, zod for shared validation, TypeScript pinned to 6.0.
 

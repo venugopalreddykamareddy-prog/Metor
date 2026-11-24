@@ -58,6 +58,27 @@ describe('WebSocket /ws', () => {
     ws.terminate();
   });
 
+  it('does not log user-supplied content from invalid messages', async () => {
+    const lines: string[] = [];
+    const logged = await buildApp(loadConfig({}), { logStream: { write: (line) => lines.push(line) } });
+    await logged.ready();
+    const ws = await logged.injectWS('/ws', { headers: { origin: ORIGIN } });
+    for (const raw of [
+      '{"secret-key-in-json": oops',
+      JSON.stringify({ type: 'echo.request', id: 'm', ts: 1, text: 'x', 'secret-extra-key': 1 }),
+      JSON.stringify({ type: 'secret-type-value', id: 'm', ts: 1 }),
+    ]) {
+      const reply = nextMessage(ws);
+      ws.send(raw);
+      await reply;
+    }
+    ws.terminate();
+    await logged.close();
+    const log = lines.join('');
+    expect(log).toContain('invalid ws message');
+    expect(log).not.toMatch(/secret/);
+  });
+
   it('rejects schema violations and binary frames', async () => {
     const ws = await app.injectWS('/ws', { headers: { origin: ORIGIN } });
     let reply = nextMessage(ws);

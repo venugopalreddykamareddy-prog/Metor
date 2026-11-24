@@ -5,6 +5,7 @@ test('loads the built app, connects over WebSocket, and echoes a message', async
   page.on('pageerror', (err) => errors.push(err.message));
 
   await page.goto('/');
+  await expect(page).toHaveTitle('Metor');
   await expect(page.getByTestId('connection-status')).toHaveText('Connected');
 
   await page.getByLabel('Message', { exact: true }).fill('hello from playwright');

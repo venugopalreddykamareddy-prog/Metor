@@ -31,6 +31,12 @@ describe('parseClientMessage', () => {
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining('text') });
   });
 
+  it('gives a fixed issue code alongside the error', () => {
+    expect(parseClientMessage('{bad')).toMatchObject({ ok: false, issue: 'invalid_json' });
+    const extra = parseClientMessage(JSON.stringify({ ...valid, extra: 1 }));
+    expect(extra).toMatchObject({ ok: false, issue: 'unrecognized_keys' });
+  });
+
   it('accepts text at the maximum length', () => {
     const raw = JSON.stringify({ ...valid, text: 'x'.repeat(MAX_TEXT_LENGTH) });
     expect(parseClientMessage(raw).ok).toBe(true);

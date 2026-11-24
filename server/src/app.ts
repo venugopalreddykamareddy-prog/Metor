@@ -7,16 +7,20 @@ import { MAX_PAYLOAD_BYTES } from '../../shared/messages.ts';
 import type { ServerConfig } from './config.ts';
 import { registerGateway } from './ws/gateway.ts';
 
-export async function buildApp(
-  config: ServerConfig,
-  opts: { logger?: boolean } = {},
-): Promise<FastifyInstance> {
+interface BuildOptions {
+  logger?: boolean;
+  /** Where log lines go (default stdout). Tests use it to inspect logs. */
+  logStream?: { write(line: string): void };
+}
+
+export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: (opts.logger ?? true)
       ? {
           level: config.production ? 'info' : 'debug',
           // Never log cookies or auth headers (SECURITY_PRIVACY §5).
           redact: ['req.headers.cookie', 'req.headers.authorization'],
+          ...(opts.logStream ? { stream: opts.logStream } : {}),
         }
       : false,
     bodyLimit: MAX_PAYLOAD_BYTES,
