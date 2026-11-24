@@ -39,7 +39,15 @@ const field = (header: string, name: string): string | null => {
   return value && value !== '-' ? value : null;
 };
 
-export function parseHeader(header: string): AnswerHeader {
+const FIELD_NAMES = 'TYPE|NOTE|ASSESSMENT|CLARIFY|ANSWER';
+
+/** Models sometimes put the whole header on one line: "TYPE: x | NOTE: y | ASSESSMENT: z". */
+function splitInlineFields(text: string): string {
+  return text.replace(new RegExp(`\\s*\\|\\s*(?=(?:${FIELD_NAMES})\\s*:)`, 'g'), '\n');
+}
+
+export function parseHeader(raw: string): AnswerHeader {
+  const header = splitInlineFields(raw);
   const type = field(header, 'TYPE')?.toLowerCase();
   const assessment = field(header, 'ASSESSMENT')?.toLowerCase();
   return {
@@ -68,7 +76,7 @@ export class AnswerStreamParser {
       return text ? [{ kind: 'text', text }] : [];
     }
     this.buffer += chunk;
-    const marker = /^\s*ANSWER\s*:[ \t]*\n?/im.exec(this.buffer);
+    const marker = /(?:^|\|)[ \t]*ANSWER\s*:[ \t]*\n?/im.exec(this.buffer);
     if (marker) {
       this.inAnswer = true;
       const header = parseHeader(this.buffer.slice(0, marker.index));

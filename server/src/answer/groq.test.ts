@@ -27,7 +27,7 @@ async function collect(provider: ReturnType<typeof createGroqAnswer>) {
 }
 
 describe('Groq answer provider', () => {
-  it('sends a streaming request with low reasoning effort and hidden reasoning, and joins the deltas', async () => {
+  it('sends a streaming request with medium reasoning effort and hidden reasoning, and joins the deltas', async () => {
     let sent: { url: string; body: Record<string, unknown>; auth: string | null } | null = null;
     const provider = createGroqAnswer({
       apiKey: 'k',
@@ -51,7 +51,7 @@ describe('Groq answer provider', () => {
     expect(sent).toMatchObject({
       url: GROQ_CHAT_URL,
       auth: 'Bearer k',
-      body: { model: 'openai/gpt-oss-20b', stream: true, max_completion_tokens: 500, reasoning_effort: 'low', include_reasoning: false },
+      body: { model: 'openai/gpt-oss-20b', stream: true, max_completion_tokens: 500, reasoning_effort: 'medium', include_reasoning: false },
     });
   });
 

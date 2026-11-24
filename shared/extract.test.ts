@@ -68,4 +68,39 @@ describe('extractQuestions details', () => {
     expect(extractQuestions('do you know what a pod disruption budget is').parts.filter(isAnswerable)).toHaveLength(1);
     expect(extractQuestions('what happens when you type a url and press enter').parts.filter(isAnswerable)).toHaveLength(1);
   });
+
+  const answerable = (text: string, hasContext = false) => extractQuestions(text, { hasContext }).parts.filter(isAnswerable);
+
+  it('treats contracted wh-words at the start as questions, but does not split on them mid-sentence', () => {
+    expect(answerable("What's the difference between a Deployment and a StatefulSet?")).toEqual([
+      { kind: 'question', text: "What's the difference between a Deployment and a StatefulSet?" },
+    ]);
+    expect(answerable('what’s your approach to monitoring')).toHaveLength(1);
+    expect(answerable("that's what's going on with the cluster")).toHaveLength(0);
+  });
+
+  it('keeps an embedded wh-clause together with its verb', () => {
+    expect(answerable('How does Kubernetes decide which node a pod is scheduled on?')).toEqual([
+      { kind: 'question', text: 'How does Kubernetes decide which node a pod is scheduled on?' },
+    ]);
+  });
+
+  it('finds "so what…" after a statement, tag questions, and imperative requests', () => {
+    expect(answerable('Key Vault stores secrets unencrypted for speed, so what extra encryption should we add?')[0]?.kind).toBe('question');
+    expect(answerable("You wrote the Terraform provider for Palo Alto, didn't you?")[0]?.kind).toBe('question');
+    expect(answerable('Adding replicas always lowers p99 latency, right?')[0]?.kind).toBe('question');
+    expect(answerable('Design a payment system that handles a million requests per second.')[0]?.kind).toBe('request');
+    expect(answerable('We wrote it in Go, right now it runs on AKS.')).toHaveLength(0);
+  });
+
+  it('waits when a sentence trails off into fillers', () => {
+    const result = extractQuestions('so um what I wanted to ask was, uh');
+    expect(result.incomplete).toBe(true);
+    expect(result.parts.filter(isAnswerable)).toHaveLength(0);
+  });
+
+  it('reads "I meant…" as a follow-up only when there is an earlier question', () => {
+    expect(answerable('Sorry, I meant mutual TLS', true)).toEqual([{ kind: 'follow_up', text: 'I meant mutual TLS' }]);
+    expect(answerable('Sorry, I meant mutual TLS', false)).toHaveLength(0);
+  });
 });

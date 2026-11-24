@@ -40,6 +40,8 @@ const answerRequest = z.strictObject({
   statements: z.array(z.string().max(500)).max(5),
   /** Recent questions and the answers shown for them, oldest first. */
   turns: z.array(z.strictObject({ question: z.string().max(1000), answer: z.string().max(1500) })).max(4),
+  /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
+  earlier: z.array(z.string().max(300)).max(10).optional(),
   isFollowUp: z.boolean(),
 });
 

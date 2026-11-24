@@ -16,6 +16,11 @@ export function createGroqAnswer(opts: {
   model: string;
   log: FastifyBaseLogger;
   fetch?: typeof fetch;
+  /**
+   * GPT-OSS reasoning effort. "medium" (default) caught wrong premises that "low" missed for about
+   * 0.3 s more to the first word (docs/ANSWER_EVALUATION.md).
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high';
 }): AnswerProvider {
   const doFetch = opts.fetch ?? fetch;
   return async ({ messages, maxTokens, signal }) => {
@@ -30,9 +35,8 @@ export function createGroqAnswer(opts: {
           stream: true,
           temperature: 0.4,
           max_completion_tokens: maxTokens,
-          // GPT-OSS models reason before answering; low effort keeps the first word fast, and the
-          // reasoning text isn't needed in the answer.
-          reasoning_effort: 'low',
+          // GPT-OSS models reason before answering (hidden; not needed in the answer).
+          reasoning_effort: opts.reasoningEffort ?? 'medium',
           include_reasoning: false,
         }),
         signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),

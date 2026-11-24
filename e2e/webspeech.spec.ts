@@ -117,12 +117,12 @@ test('shows the words spoken: raw as heard, clean as readable sentences', async 
   ]);
   await page.getByRole('button', { name: 'Clean' }).click();
 
-  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect.poll(() => fake(page, (r) => r.stops)).toBe(1);
-  await page.getByRole('button', { name: 'Resume' }).click();
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect.poll(() => fake(page, (r) => r.starts)).toBe(3);
 
-  await page.getByRole('button', { name: 'Stop' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByTestId('recording-indicator')).toBeHidden();
   expect(await liveTrackCount(page)).toBe(0);
   await expect(sentences(page)).toHaveCount(2);
@@ -185,7 +185,7 @@ test('keeps the newest line in view unless the user scrolls up', async ({ page }
 test('scores a transcript against the accuracy script', async ({ page }) => {
   await startBrowserSpeech(page);
   await fake(page, (r) => r.emit('how would you define an s l o and an error budget for a payments api', true));
-  await page.getByRole('button', { name: 'Stop' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await page.getByText('Accuracy check').click();
   await page.getByLabel('Reference text').fill('How would you define an SLO and an error budget for a payments API?');
   await page.getByRole('button', { name: 'Score transcript' }).click();

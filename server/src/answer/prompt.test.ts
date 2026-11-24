@@ -19,9 +19,17 @@ const system = buildMessages(base)[0]?.content ?? '';
 
 describe('buildMessages', () => {
   it('asks for the header format and the validation and style rules', () => {
-    for (const phrase of ['ASSESSMENT:', 'CLARIFY:', 'ANSWER:', 'Never assume a term is real', 'Never claim you checked documentation', 'No verified resume or experience', 'first person']) {
+    for (const phrase of ['ASSESSMENT:', 'CLARIFY:', 'ANSWER:', 'do I specifically know this exists', 'Never describe what it does', 'Never claim you checked documentation', 'No verified resume or experience', 'first person']) {
       expect(system).toContain(phrase);
     }
+  });
+
+  it('asks for a spoken, conversational style rather than textbook text', () => {
+    for (const phrase of ['contractions', "Don't open with a dictionary definition", 'No markdown', 'Great question', 'plays a crucial role', 'Spoken, aim for']) {
+      expect(system).toContain(phrase);
+    }
+    // Examples are framed as hypotheticals, never as the candidate's own history.
+    expect(system).toContain('never as something the candidate did');
   });
 
   it('wraps interviewer text as data and states the length', () => {
@@ -41,6 +49,17 @@ describe('buildMessages', () => {
     expect(text).toContain('Q1: How does BGP choose a path?');
     expect(text).toContain('We peer with two ISPs.');
     expect(text).toContain('This is a follow-up');
+  });
+
+  it('adds older questions as a short rolling summary, before the full turns', () => {
+    const text = user({
+      ...base,
+      earlier: ['What is an SLI?', 'How do you alert on burn rate?'],
+      turns: [{ question: 'How does BGP choose a path?', answer: 'Highest local preference first…' }],
+    });
+    expect(text).toContain('Asked earlier in this conversation: What is an SLI? | How do you alert on burn rate?');
+    expect(text.indexOf('Asked earlier')).toBeLessThan(text.indexOf('Q1:'));
+    expect(user(base)).not.toContain('Asked earlier');
   });
 
   it('adds the raw text only when cleaning changed it', () => {

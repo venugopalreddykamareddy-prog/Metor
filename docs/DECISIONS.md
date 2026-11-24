@@ -213,3 +213,18 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No change to the $0 default. Answer quality starts with open-weight models on Groq, and the evaluation set (docs/ANSWER_EVALUATION.md) shows whether that's good enough before any paid option is considered.
 
+
+---
+
+## ADR-014: Answer checking — medium reasoning effort and NOTE before ASSESSMENT
+
+**Status:** Accepted · 2026-11-24 (Phase 4)
+
+**Context:** The first live Groq runs (`openai/gpt-oss-120b`, `reasoning_effort: low`) answered a made-up "Istio Hyperdrive mode" as if it existed and labeled every wrong-premise question in a small sample `none`. One answer even stated the premise was wrong in NOTE while ASSESSMENT said `none`. With label options separated by `|` in the prompt, one reply wrote the whole header on one line.
+
+**Decision:**
+1. The prompt asks the model to list, in its hidden reasoning, every named product, feature, command and built-in claim and check each one before writing the header. An unknown feature must not be described or used as if it exists.
+2. Header order is TYPE, NOTE, ASSESSMENT, CLARIFY, ANSWER: the model names the problem before choosing the label. The prompt shows one field per line with placeholders, not `a | b | c`. The parser accepts the one-line `|` form and either field order.
+3. `reasoning_effort` defaults to `medium`. On the same six fabricated/wrong-premise questions, low caught 0 of 4 wrong premises and medium 2–3 of 4 (it varies between runs), for about 0.2–0.5 s more to the first word. It stays configurable (`createGroqAnswer({ reasoningEffort })`, `pnpm eval:answers --reasoning`).
+
+**Consequences:** Slightly slower first word and about 10% more tokens per answer on the free tier. Wrong-premise detection is still not reliable with this model (see docs/ANSWER_EVALUATION.md); a larger evaluation run and possibly a stronger free model are needed before the ≥ 85% assessment target can be claimed.

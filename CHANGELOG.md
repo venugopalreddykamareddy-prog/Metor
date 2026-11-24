@@ -6,6 +6,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 4 (PR #6): question understanding and streaming answers. Local question extraction from the clean transcript (compound questions kept whole, requests without "?", incomplete phrases wait, superseded and repeated questions, duplicates dropped); Groq GPT-OSS 120B/20B and simulated answer providers; one request per question with a parsed TYPE / NOTE / ASSESSMENT / CLARIFY header; cancel and replace; per-session limits; free-tier token ledger; `/api/usage`.
+- Answer workspace: three resizable panels (drag or arrow keys, remembered) with the answers panel at about 55% by default; transcript and questions collapse to rails; focus mode for the latest question and answer (Esc exits; the recording indicator stays visible); answer text size and line spacing settings; Copy answer button.
+- Answers are grouped per question: Regenerate and "Answer again" add versions instead of replacing, an answer stopped by a newer question keeps its text, and a repeated question moves its earlier answer to the end. Off-topic results show as a one-line note, not an answer card.
+- Simulated answers are labeled "Simulated · not AI" (dashed, hatched card, placeholder text prefix); Groq answers are labeled "AI-generated" with the model. The settings bar says which one is selected.
+- `pnpm eval:answers`: runs `eval/answer-questions.json` through the same term fixes, extraction, prompt, parser and ledger as the app; writes JSON and a CSV with grading columns; automatic checks for assessment accuracy, false-positive flags, suspected hallucinations, textbook style, and latency. CI runs it with the simulated engine (`--check`); Groq runs need `--confirm-free-tier`.
+- Playwright tests for answers: spoken question → extracted → simulated answer labeled as such; regenerate keeps versions; copy; a new question stops the previous answer but keeps its text; panel widths, resizing and persistence; collapsing; focus mode with display settings.
+- "solo" is read as SLO only with reliability context ("an solo", "latency solo", "solo burn rate", "our solos" next to availability or error-budget words); "worked solo", "a guitar solo", "a solo project" stay as they are.
+- ADR-014: medium reasoning effort for GPT-OSS answers and NOTE before ASSESSMENT in the header.
+
+### Fixed
+
+- Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.
+- Playwright's test server now blanks `GROQ_API_KEY` and `GEMINI_API_KEY`, so a key in the Codespace environment can't make browser tests call a real provider.
+- Answer header parser accepts a one-line header with `|` separators and either field order.
+
+### Changed
+
+- Answer prompt: spoken, conversational style (contractions, answer first, one hypothetical example, no markdown or stock phrases, no formulaic closer) with a textbook-vs-spoken example; explicit check of every named term and built-in claim before the header; an unknown feature is never described or used as if real.
+- The answer's Stop button is now "Stop answer", so it can't be confused with stopping the recording.
+
+### Added (earlier phases)
+
 - Phase 3 (PR #5): real transcription. Mode selector with Simulated, Browser speech (Web Speech API on Metor's own mic track, restarts after silence, phrase boosting where supported), and Groq Whisper (free tier, offered only when `GROQ_API_KEY` is set).
 - Groq segments sized for the free-tier quota (voice detection with an adaptive noise floor, ≥ 8 s or a 1.5 s pause up to twice a minute, 30 s cap), WAV upload with a vocabulary prompt, and filtering of silence and Whisper hallucinations. A 429 pauses uploads until the reset time; no paid fallback.
 - File-backed usage ledger: requests and audio seconds per minute for 24 h, charged before each Groq call, capped at 80% of the published free-tier limits.

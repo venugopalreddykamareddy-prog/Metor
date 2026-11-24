@@ -46,7 +46,7 @@ export function createSimulatedAnswer(delayMs = 25): AnswerProvider {
     const h = classify(request);
     const header = `TYPE: ${h.type}\nASSESSMENT: ${h.assessment}\nNOTE: ${h.note ?? '-'}\nCLARIFY: ${h.clarify ?? '-'}\nANSWER:\n`;
     const answer = [
-      '(Simulated answer.) Sure, here is how I would put it.',
+      '[Simulated placeholder, not an AI answer.] Sure, here is how I would put it.',
       ...BODY.slice(0, SENTENCES[request.length]),
       'That is the short version, and I am happy to go deeper on any part.',
     ].join(' ');

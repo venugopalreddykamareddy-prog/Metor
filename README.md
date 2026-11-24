@@ -9,16 +9,23 @@ Metor is a personal project: a browser app that will transcribe speech, spot que
 | 0. Docs and agent rules | Done (PR #1) |
 | 1. Web foundation | Done (PR #2) |
 | 2. Login, mic capture, simulated transcription | Done (PR #4) |
-| 3. Real transcription: Browser speech and Groq Whisper | In review (PR #5) |
-| 4. Question extraction and answers: split questions out of continuous speech, validate them (false premises, made-up terms, mishearings), stream answers from Groq's free tier, one request per question | Planned |
+| 3. Real transcription: Browser speech and Groq Whisper | Done (PR #5) |
+| 4. Question extraction and answers: split questions out of continuous speech, validate them (false premises, made-up terms, mishearings), stream answers from Groq's free tier, one request per question | In review (PR #6) |
 | 5–9. Resume grounding and experience checks, practice mode, desktop app, hardening, release | Planned |
 | 10–12. Camera preview, presence coaching, disclosed gaze correction | Planned (no video work yet) |
 
 Details for every phase: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
-### What works (through Phase 3)
+### What works (through Phase 4, in review)
 
-Metor transcribes what you say. There are no AI answers yet.
+Metor transcribes what you say, picks out the questions, and streams a suggested answer for each.
+
+- **Questions**: extracted locally from the clean transcript, word for word, even without punctuation: several questions in one breath are split, requests like "walk me through…" count, unfinished phrases wait, greetings and small talk are skipped, and a repeated question re-shows the earlier answer without a new request.
+- **Answers**: one request per question to Groq's free tier (`openai/gpt-oss-120b` or `-20b`), streamed word by word, or **Simulated** canned text when there's no key. Each answer says whether it's "AI-generated" or "Simulated · not AI". The model is told to check terms and premises first: made-up technologies, wrong premises, possible mishearings, and ambiguous acronyms get a label above the answer instead of an invented explanation. With no resume loaded yet, it never claims experience.
+- **Answer panel**: about 55% of the width, resizable panels, collapsible transcript and questions, focus mode for the latest question and answer, adjustable text size and line spacing, copy button, and earlier versions kept when you regenerate.
+- **Evaluation**: `pnpm eval:answers` runs the 113-question set (simulated in CI; Groq free tier by hand). Results so far are in [docs/ANSWER_EVALUATION.md](docs/ANSWER_EVALUATION.md).
+
+From Phase 3:
 
 - **Transcription modes**, picked before each recording:
   - **Browser speech** (Web Speech API): no key, words appear as you talk. In Chrome and Edge the browser sends audio to Google or Microsoft; nothing goes to the Metor server.

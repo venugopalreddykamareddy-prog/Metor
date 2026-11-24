@@ -407,7 +407,7 @@ describe('answers', () => {
     const header = conn.messages.find((m) => m.type === 'answer.header');
     expect(header).toMatchObject({ questionId: req.questionId, questionType: 'technical', assessment: 'none' });
     const text = conn.messages.filter((m) => m.type === 'answer.delta').map((m) => m.text).join('');
-    expect(text).toContain('(Simulated answer.)');
+    expect(text).toContain('[Simulated placeholder, not an AI answer.]');
     expect(conn.messages.findIndex((m) => m.type === 'answer.header')).toBeLessThan(conn.messages.findIndex((m) => m.type === 'answer.delta'));
     conn.ws.terminate();
   });

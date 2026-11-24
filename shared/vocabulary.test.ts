@@ -28,6 +28,33 @@ describe('correctTerms', () => {
     expect(correctTerms(heard)).toBe(expected);
   });
 
+  it.each([
+    ['how would you define an solo for a payments api', 'how would you define an SLO for a payments API'],
+    ['what is the difference between an sli and a solo', 'what is the difference between an SLI and a SLO'],
+    ['what is a good latency solo for checkout', 'what is a good latency SLO for checkout'],
+    ['how do you alert on solo burn rate', 'how do you alert on SLO burn rate'],
+    ['we set a solo of 99.9 percent', 'we set a SLO of 99.9 percent'],
+    ['solo versus sla what is the difference', 'SLO versus SLA what is the difference'],
+    ['how many solos should each service have to protect the error budget', 'how many SLOs should each service have to protect the error budget'],
+    ['our solos cover availability and latency', 'our SLOs cover availability and latency'],
+    ['what happens when you miss your solo target', 'what happens when you miss your SLO target'],
+  ])('reads "solo" as SLO with reliability context: %s', (heard, expected) => {
+    expect(correctTerms(heard)).toBe(expected);
+  });
+
+  it.each([
+    'I worked solo on the error budget tooling',
+    'she played a guitar solo at the offsite',
+    'it was a solo project about availability',
+    'I was flying solo during on-call last week',
+    'our solo on-call engineer handled the latency incident',
+    'he went solo for a year before joining an SRE team',
+    'the solo was the best part of the show',
+    'solo travel is fun',
+  ])('keeps ordinary "solo": %s', (text) => {
+    expect(correctTerms(text)).toBe(text);
+  });
+
   it('never guesses unfamiliar terms into known ones', () => {
     for (const text of [
       'we use Kubeflux and Terraformer for that',

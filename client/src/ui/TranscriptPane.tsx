@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import type { CleanItem, Replacement } from '../session/cleanTranscript.ts';
 import type { Transcript } from '../session/transcript.ts';
 
@@ -16,6 +16,8 @@ interface Props {
   onEditSentence: (key: string, text: string) => void;
   onAddCorrection: (heard: string, correct: string) => void;
   onRemoveCorrection: (heard: string) => void;
+  /** Collapses the panel to a rail (the recording indicator is elsewhere and stays visible). */
+  onCollapse?: () => void;
 }
 
 export function TranscriptPane(props: Props) {
@@ -25,7 +27,8 @@ export function TranscriptPane(props: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
-  useEffect(() => {
+  // Before paint, so new lines never flash above the fold.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickRef.current && props.autoScroll) el.scrollTop = el.scrollHeight;
   }, [transcript, view, props.autoScroll]);
@@ -52,6 +55,11 @@ export function TranscriptPane(props: Props) {
         <button type="button" className="link" onClick={props.onClear} disabled={empty}>
           Clear transcript
         </button>
+        {props.onCollapse && (
+          <button type="button" className="link" aria-label="Hide transcript" onClick={props.onCollapse}>
+            ◂ Hide
+          </button>
+        )}
       </h2>
       <div
         className="transcript-scroll"

@@ -9,9 +9,10 @@ interface Props {
   onDismiss: (id: string) => void;
   onMerge: (id: string) => void;
   onAsk: (text: string) => void;
+  onCollapse?: () => void;
 }
 
-export function QuestionsPanel({ questions, onAnswer, onDismiss, onMerge, onAsk }: Props) {
+export function QuestionsPanel({ questions, onAnswer, onDismiss, onMerge, onAsk, onCollapse }: Props) {
   const [typed, setTyped] = useState('');
   const visible = questions.filter((q) => q.status !== 'superseded' && q.status !== 'dismissed');
   const submit = (e: FormEvent) => {
@@ -22,7 +23,14 @@ export function QuestionsPanel({ questions, onAnswer, onDismiss, onMerge, onAsk 
 
   return (
     <section className="panel" aria-label="Detected questions">
-      <h2>Questions</h2>
+      <h2>
+        Questions
+        {onCollapse && (
+          <button type="button" className="link" aria-label="Hide questions" onClick={onCollapse}>
+            ◂ Hide
+          </button>
+        )}
+      </h2>
       {visible.length === 0 && <p className="muted">Questions you're asked will show up here.</p>}
       <ol className="questions" data-testid="questions">
         {visible.map((q, i) => (

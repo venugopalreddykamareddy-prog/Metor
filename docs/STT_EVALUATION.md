@@ -29,6 +29,7 @@ The script has 10 sentences and 33 technical terms. It can be edited in the pane
 | 2026-11-24 | Browser speech | Chrome / owner's mic | — | — | — | — | 0.45 s (n=6) | Owner's first manual test: recognition works; fragmented, no capitals or punctuation. Accuracy script not run yet. |
 | 2026-11-24 | Browser speech (clean view) | Chrome / owner's mic | — | — | — | — | 0.44 s (n=6) | Sentence merging and term recognition improved; several questions spoken in a row merge into one paragraph (to be handled by Phase 4 question extraction). Accuracy script not run yet. |
 | 2026-11-24 | Browser speech (clean view) | Chrome / owner's mic | — | — | — | — | 0.30 s (n=6) | Third manual test. Observations moved to Phase 4 acceptance: requests without "?", incomplete phrases, superseded questions, rapid topic changes, repeats, ambiguous acronyms. |
+| 2026-11-24 | Real speech (mode not recorded) | Owner's browser / mic | — | — | — | — | 0.48 s (n=2) | Fourth manual test, Phase 4 work in progress: question extraction, separate panels and automatic simulated answers worked. Speech end → first answer word median 1.06 s with **simulated** answers; not a Groq answer measurement. Accuracy script not run yet. |
 | | Groq Whisper | | | | | | | |
 
 ## Known behaviour to watch for

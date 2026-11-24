@@ -3,6 +3,7 @@ import type { AnswerHeader } from '../../../shared/answerFormat.ts';
 import type { AnswerEngine, AnswerLength, ClientMessageBody } from '../../../shared/messages.ts';
 import type { DetectedQuestion } from '../questions/tracker.ts';
 import type { AnswerMessage } from '../session/useRecorder.ts';
+import { contextTurns, earlierTopics } from './grouping.ts';
 
 export interface AnswerCard {
   questionId: string;
@@ -26,7 +27,8 @@ export interface AnswerCard {
 
 const CONTEXT_TURNS = 3;
 const CONTEXT_ANSWER_CHARS = 1200;
-const MAX_CARDS = 50;
+// Matches the server's default MAX_ANSWERS_PER_SESSION, so a session's answers are all kept.
+const MAX_CARDS = 100;
 
 export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
   const [cards, setCards] = useState<AnswerCard[]>([]);
@@ -40,10 +42,8 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
     (q: DetectedQuestion, engine: AnswerEngine, length: AnswerLength): boolean => {
       const questionId = crypto.randomUUID();
       // Recent finished answers give the model context for follow-ups.
-      const turns = cardsRef.current
-        .filter((c) => c.status === 'done' && c.text)
-        .slice(-CONTEXT_TURNS)
-        .map((c) => ({ question: c.question.slice(0, 1000), answer: c.text.slice(0, CONTEXT_ANSWER_CHARS) }));
+      const turns = contextTurns(cardsRef.current, CONTEXT_TURNS, CONTEXT_ANSWER_CHARS);
+      const earlier = earlierTopics(cardsRef.current, CONTEXT_TURNS);
       const sent = send({
         type: 'answer.request',
         questionId,
@@ -53,6 +53,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         engine,
         statements: q.statements.slice(-5).map((s) => s.slice(0, 500)),
         turns,
+        ...(earlier.length ? { earlier } : {}),
         isFollowUp: q.kind === 'follow_up',
       });
       if (!sent) return false;

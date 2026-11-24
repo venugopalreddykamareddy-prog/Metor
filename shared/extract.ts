@@ -22,9 +22,18 @@ interface Token {
   bare: string;
 }
 
-const bare = (w: string) => w.toLowerCase().replace(/[^a-z0-9'/-]/g, '');
+const bare = (w: string) => w.toLowerCase().replace(/’/g, "'").replace(/[^a-z0-9'/-]/g, '');
 
 const WH = new Set(['what', 'why', 'how', 'when', 'where', 'which', 'who', 'whose']);
+// "What's the difference…": a contracted wh-word starts a question when it begins a part. It
+// doesn't split mid-sentence ("that's what's going on").
+const WH_CONTRACTED = new Set(["what's", "how's", "where's", "who's", "why's", "when's", "what're", "how're", "where're"]);
+// Imperatives that ask for an answer when they start a part ("Design a payment system…").
+const PART_REQUESTS = new Set(['design', 'compare', 'define', 'outline', 'sketch', 'propose', 'list']);
+// "…, didn't you?" / "…, right?": a statement turned into a question.
+const TAG_QUESTION = /(?:\b(?:didn't|don't|doesn't|haven't|hasn't|isn't|aren't|wasn't|weren't|won't|wouldn't|can't|couldn't|shouldn't)\s+(?:you|it|we|they|he|she|there)|\bright|\bcorrect|\bisn't that so)\?$/i;
+// With earlier context, "I meant mutual TLS" corrects the last question.
+const CORRECTION_OPENERS = [['i', 'meant'], ['i', 'mean'], ['no', 'i', 'meant'], ['what', 'i', 'meant', 'was']];
 const AUX = new Set(['is', 'are', 'was', 'were', 'do', 'does', 'did', 'can', 'could', 'would', 'will', 'should', 'have', 'has', 'shall', 'may']);
 const PRONOUNS = new Set(['you', 'we', 'it', 'they', 'i', 'he', 'she', 'there', 'that', 'this', 'your', 'our']);
 // Words after a wh-word that make it a question opener rather than a clause ("what happens when you…").
@@ -88,6 +97,12 @@ function opensQuestion(tokens: Token[], at: number): 'question' | 'request' | nu
   const w = tokens[at]?.bare ?? '';
   const next = tokens[at + 1]?.bare ?? '';
   if (matchAny(tokens, at, REQUESTS)) return 'request';
+  // "…for speed, so what extra encryption should we add": a wh-word after "so" or a comma, with
+  // an auxiliary within the next few words.
+  const before = tokens[at - 1];
+  if (WH.has(w) && before && (before.bare === 'so' || before.raw.endsWith(',')) && tokens.slice(at + 1, at + 5).some((t) => AUX.has(t.bare))) {
+    return 'question';
+  }
   if (WH.has(w) && (WH_FOLLOWERS.has(next) || next === '')) return 'question';
   if (WH.has(w) && w === 'how' && /^(do|does|would|can|is|are|should|will|did)$/.test(next)) return 'question';
   // "…what a service mesh is and when…": an auxiliary followed by a conjunction ends a clause.
@@ -146,7 +161,9 @@ function classify(tokens: Token[]): PartKind {
   const opener = opensQuestion(tokens, 0);
   if (opener) return opener;
   // Splitting needs a strong cue, but any part that starts with a wh-word is a question.
-  if (WH.has(tokens[0]?.bare ?? '')) return 'question';
+  if (WH.has(tokens[0]?.bare ?? '') || WH_CONTRACTED.has(tokens[0]?.bare ?? '')) return 'question';
+  if (PART_REQUESTS.has(tokens[0]?.bare ?? '') && tokens.length >= 3) return 'request';
+  if (TAG_QUESTION.test(text(tokens))) return 'question';
   if (tokens.every((t) => FILLERS.has(t.bare))) return 'filler';
   let i = 0;
   while (i < tokens.length) {
@@ -213,7 +230,9 @@ export function extractQuestions(input: string, opts: { hasContext?: boolean } =
       // An auxiliary ("is etcd encrypted…") only starts a new question right after a complete
       // question; after a wh-word it's part of the same one ("how would you").
       const auxOpener = opener === 'question' && AUX.has(tok.bare);
-      const auxAllowed = !auxOpener || (!WH.has(prev) && prevRest.length >= 4 && opensQuestion(prevRest, 0) !== null);
+      // "…which node a pod | is scheduled on": an embedded wh-clause still needs its verb.
+      const embeddedWh = prevRest.slice(1).slice(-4).some((t) => WH.has(t.bare));
+      const auxAllowed = !auxOpener || (!WH.has(prev) && !embeddedWh && prevRest.length >= 4 && opensQuestion(prevRest, 0) !== null);
       if (enumerator && (complete(prevRest) || current.length >= 3)) {
         flush();
       } else if (opener && auxAllowed && complete(prevRest)) {
@@ -258,12 +277,15 @@ export function extractQuestions(input: string, opts: { hasContext?: boolean } =
     }
     let kind = classify(rest);
     if (kind === 'question' && opts.hasContext && rest.length <= 8 && rest[0]?.bare === 'and') kind = 'follow_up';
+    if (kind === 'statement' && opts.hasContext && matchAny(rest, 0, CORRECTION_OPENERS) && rest.length >= 3) kind = 'follow_up';
     parts.push({ kind, text: text(rest), ...(repeatCue ? { repeatCue: true } : {}) });
   }
 
   // 3. A trailing question or request that dangles isn't ready; drop duplicates said back to back.
   const last = parts.at(-1);
-  const lastTokens = last ? last.text.split(/\s+/).map(bare) : [];
+  // Trailing fillers don't finish a sentence: "what I wanted to ask was, uh" still dangles.
+  const lastTokens = last ? last.text.split(/\s+/).map(bare).filter(Boolean) : [];
+  while (lastTokens.length > 1 && FILLERS.has(lastTokens.at(-1) ?? '')) lastTokens.pop();
   const incomplete = !!last && last.kind !== 'filler' && last.kind !== 'greeting' && DANGLING.has(lastTokens.at(-1) ?? '') && !/[?.!]$/.test(last.text);
   const kept: Part[] = [];
   for (const p of incomplete ? parts.slice(0, -1) : parts) {

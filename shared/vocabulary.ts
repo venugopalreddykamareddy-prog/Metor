@@ -142,9 +142,43 @@ const CONTEXT_CORRECTIONS: [RegExp, (match: string, ...groups: string[]) => stri
   [/\b(?:cube|kube)\s+(get|apply|describe|delete|logs|exec|rollout|scale|port-forward|config)\b/gi, (_m, verb) => `kubectl ${verb}`],
 ];
 
+// "SLO" said aloud ("ess-el-oh") is often written as "solo". "Solo" is also normal English
+// ("I worked solo", "a guitar solo", "a solo project"), so it's changed only with clear evidence,
+// all of it from explicit word lists:
+//  1. "an solo": "an" fits "ess-el-oh", not "solo".
+//  2. A reliability word right next to it: "latency solo", "solo target", "solo burn rate",
+//     "solo of 99.9", "SLI and solo".
+//  3. A determiner before it ("the solo", "our solos", "define a solo") and a reliability word
+//     elsewhere in the sentence, unless the next word makes it the ordinary adjective
+//     ("a solo project", "a guitar solo" has no determiner directly before "solo").
+const SLO_BEFORE =
+  'sli|slis|sla|slas|slo|slos|availability|latency|uptime|reliability|error[- ]rate|durability|freshness|throughput|p99|p95|p50|service[- ]level';
+const SLO_AFTER =
+  'targets?|burn(?:[- ]rate)?|burn[- ]rates|breach(?:es)?|violations?|compliance|attainment|windows?|thresholds?|alerts?|alerting|dashboards?|definitions?|policy|policies|(?:and an?|and|vs\\.?|versus|or) (?:slis?|slas?)|of \\d+';
+const SLO_CONTEXT =
+  /\b(?:slis?|slas?|slos?|error budgets?|burn rates?|availability|latency|uptime|reliability|nines|service[- ]level|p99|p95|p50|sre|on-?call|alerting|\d+(?:\.\d+)?\s*(?:%|percent))\b/i;
+// "a solo project": solo is an adjective here, never the acronym.
+const SOLO_NOUNS =
+  'project|projects|career|album|artist|act|trip|travel|traveler|traveller|flight|founder|developer|dev|engineer|effort|work|performance|show|mission|climb|run|adventure|venture|practice|piece|player|ride|session|attempt|job|parent|entrepreneur|game|mode|queue|play|sailor|hike|record|debut|exhibition|instrument|guitar|violin|piano|drum|drums|on-call|oncall|sre|sres|operator|maintainer|owner|contributor|consultant';
+const DETERMINER = "a|an|the|our|your|their|my|his|her|its|each|every|per|this|that|these|those|which|what|one|many|few|several|multiple|separate|different|define|defining";
+
+function fixSolo(text: string): string {
+  const plural = (s: string) => (/s$/i.test(s) ? 'SLOs' : 'SLO');
+  let result = text.replace(/\b(an)\s+(solos?)\b/gi, (_m, an: string, solo: string) => `${an} ${plural(solo)}`);
+  result = result.replace(new RegExp(`\\b(${SLO_BEFORE})\\s+(solos?)\\b`, 'gi'), (_m, before: string, solo: string) => `${before} ${plural(solo)}`);
+  result = result.replace(new RegExp(`\\b(solos?)(?=\\s+(?:${SLO_AFTER})\\b)`, 'gi'), (solo: string) => plural(solo));
+  if (SLO_CONTEXT.test(result.replace(/\bsolos?\b/gi, ''))) {
+    result = result.replace(
+      new RegExp(`\\b((?:${DETERMINER})\\s+)(solos?)\\b(?!\\s+(?:${SOLO_NOUNS})\\b)`, 'gi'),
+      (_m, before: string, solo: string) => `${before}${plural(solo)}`,
+    );
+  }
+  return result;
+}
+
 /** Fixes known mishearings and the casing of technical terms. Unknown words are left alone. */
 export function correctTerms(text: string): string {
-  let result = text;
+  let result = fixSolo(text);
   for (const [pattern, fix] of CONTEXT_CORRECTIONS) result = result.replace(pattern, fix);
   for (const [pattern, canonical] of CORRECTIONS) result = result.replace(pattern, canonical);
   return result;

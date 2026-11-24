@@ -1,80 +1,74 @@
 import { useEffect, useRef } from 'react';
-import type { Assessment } from '../../../shared/answerFormat.ts';
+import type { AnswerGroup } from '../answers/grouping.ts';
 import type { AnswerCard } from '../answers/useAnswers.ts';
+import { FONT_SIZES, LINE_SPACINGS, type AnswerDisplay, type FontSize, type LineSpacing } from '../settings.ts';
+import { AnswerView } from './AnswerView.tsx';
 
-const ASSESSMENT_LABEL: Record<Assessment, string | null> = {
-  none: null,
-  incorrect_premise: 'Incorrect premise',
-  unrecognized_term: 'Unrecognized term',
-  possible_transcription_error: 'Possibly misheard',
-  clarification_needed: 'Needs clarification',
-  unrealistic_requirement: 'Unrealistic requirement',
-  insufficient_information: 'Not enough information',
-  unverified_experience: 'Unverified experience',
-  off_topic: 'Off-topic',
-};
-const ENGINE_LABEL: Record<AnswerCard['engine'], string> = {
-  simulated: 'Simulated',
-  'groq-120b': 'GPT-OSS 120B',
-  'groq-20b': 'GPT-OSS 20B',
-};
+interface DisplayProps {
+  display: AnswerDisplay;
+  onFontSize: (v: FontSize) => void;
+  onLineSpacing: (v: LineSpacing) => void;
+}
 
-const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(2)} s`);
+/** Text size and line spacing for answers; shared by the panel and focus mode. */
+export function AnswerDisplayControls({ display, onFontSize, onLineSpacing }: DisplayProps) {
+  return (
+    <span className="display-controls">
+      <label>
+        Text size
+        <select value={display.fontSize} onChange={(e) => onFontSize(e.target.value as FontSize)}>
+          {FONT_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s} px
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Line spacing
+        <select value={display.lineSpacing} onChange={(e) => onLineSpacing(e.target.value as LineSpacing)}>
+          {LINE_SPACINGS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+    </span>
+  );
+}
 
-interface Props {
-  cards: AnswerCard[];
+interface Props extends DisplayProps {
+  groups: AnswerGroup[];
   autoScroll: boolean;
   onCancel: (questionId: string) => void;
   onRegenerate: (card: AnswerCard) => void;
+  onFocus: () => void;
 }
 
-export function AnswersPanel({ cards, autoScroll, onCancel, onRegenerate }: Props) {
+export function AnswersPanel({ groups, autoScroll, onCancel, onRegenerate, onFocus, ...display }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (el && autoScroll) el.scrollTop = el.scrollHeight;
-  }, [cards, autoScroll]);
+  }, [groups, autoScroll]);
 
   return (
-    <section className="panel" aria-label="Suggested answers">
-      <h2>Suggested answers</h2>
+    <section className="panel answers-panel" aria-label="Suggested answers">
+      <h2>
+        Suggested answers
+        <span className="panel-tools">
+          <AnswerDisplayControls {...display} />
+          <button type="button" onClick={onFocus}>
+            Focus
+          </button>
+        </span>
+      </h2>
       <div className="answers-scroll" ref={scrollRef} data-testid="answers-scroll">
-        {cards.length === 0 && <p className="muted">Answers stream here when a question is ready.</p>}
-        {cards.map((c) => {
-          const label = c.header ? ASSESSMENT_LABEL[c.header.assessment] : null;
-          return (
-            <article key={c.questionId} className={`answer status-${c.status}`} data-testid="answer">
-              <p className="answer-question">{c.question}</p>
-              {label && (
-                <div className="assessment" data-testid="assessment">
-                  <strong>{label}</strong>
-                  {c.header?.note && <span> · {c.header.note}</span>}
-                  {c.header?.clarify && <div className="clarify">Ask: “{c.header.clarify}”</div>}
-                </div>
-              )}
-              <div className="answer-text" data-testid="answer-text">
-                {c.text}
-                {c.status === 'streaming' && <span className="cursor" aria-hidden="true">▍</span>}
-              </div>
-              {c.error && <p className="error">{c.error}</p>}
-              <div className="answer-meta">
-                <span>
-                  {ENGINE_LABEL[c.engine]} · {c.length} · speech end → first word {seconds(c.firstTextAt === null ? null : c.firstTextAt - c.spokenAt)} ·
-                  server first word {seconds(c.serverFirstTokenMs)} · total {seconds(c.totalMs)}
-                </span>
-                {c.status === 'streaming' ? (
-                  <button type="button" onClick={() => onCancel(c.questionId)}>
-                    Stop
-                  </button>
-                ) : (
-                  <button type="button" className="link" onClick={() => onRegenerate(c)}>
-                    Regenerate
-                  </button>
-                )}
-              </div>
-            </article>
-          );
-        })}
+        {groups.length === 0 && <p className="muted">Answers stream here when a question is ready.</p>}
+        {groups.map((g) => (
+          <AnswerView key={g.sourceId} group={g} display={display.display} onCancel={onCancel} onRegenerate={onRegenerate} />
+        ))}
       </div>
     </section>
   );

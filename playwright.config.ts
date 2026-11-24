@@ -33,6 +33,13 @@ export default defineConfig({
     url: `${BASE_URL}/healthz`,
     reuseExistingServer: false,
     timeout: 30_000,
-    env: { PORT: String(PORT), APP_PASSPHRASE_HASH: await hashPassphrase(E2E_PASSPHRASE) },
+    // Tests never call real providers: blank any key the shell (e.g. a Codespaces secret) provides,
+    // since Playwright passes the parent environment through to the server.
+    env: {
+      PORT: String(PORT),
+      APP_PASSPHRASE_HASH: await hashPassphrase(E2E_PASSPHRASE),
+      GROQ_API_KEY: '',
+      GEMINI_API_KEY: '',
+    },
   },
 });

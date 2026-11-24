@@ -52,4 +52,21 @@ describe('AnswerStreamParser', () => {
     expect(textOf(events)).toBe(long);
     expect(textOf(run(['Short answer, no header.']))).toBe('Short answer, no header.');
   });
+
+  it('reads a header written on one line with | separators', () => {
+    const events = run([
+      'TYPE: technical | NOTE: I don\'t recognize "Hyperdrive mode". | ASSESSMENT: unrecognized_term | CLARIFY: Is it an internal tool? | ANS',
+      'WER:\nI\'m not familiar with that mode.',
+    ]);
+    expect(events[0]).toEqual({
+      kind: 'header',
+      header: { questionType: 'technical', assessment: 'unrecognized_term', note: 'I don\'t recognize "Hyperdrive mode".', clarify: 'Is it an internal tool?' },
+    });
+    expect(textOf(events)).toBe("I'm not familiar with that mode.");
+  });
+
+  it('reads NOTE before ASSESSMENT', () => {
+    const events = run(['TYPE: technical\nNOTE: UDP does not guarantee ordering.\nASSESSMENT: incorrect_premise\nCLARIFY: -\nANSWER:\nActually, it doesn\'t.']);
+    expect(events[0]).toMatchObject({ header: { assessment: 'incorrect_premise', note: 'UDP does not guarantee ordering.', clarify: null } });
+  });
 });

@@ -37,13 +37,13 @@ const GROQ_WHISPER_LIMITS: QuotaLimits = {
 
 // Groq's published limits for openai/gpt-oss-20b and -120b (checked 2026-11-24, Developer-plan
 // table): 30 requests/min, 1K/day, 8K tokens/min, 200K tokens/day. No hourly limit is listed.
-const GROQ_CHAT_LIMITS: QuotaLimits = {
+export const GROQ_CHAT_LIMITS: QuotaLimits = {
   perMinute: { requests: 30, units: 8000 },
   perHour: { requests: 1000, units: 200_000 },
   perDay: { requests: 1000, units: 200_000 },
 };
 
-function scaled(limits: QuotaLimits, ratio: number): QuotaLimits {
+export function scaled(limits: QuotaLimits, ratio: number): QuotaLimits {
   const scale = (u: { requests: number; units: number }) => ({
     requests: Math.floor(u.requests * ratio),
     units: Math.floor(u.units * ratio),
