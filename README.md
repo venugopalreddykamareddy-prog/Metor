@@ -29,15 +29,11 @@ A lightweight, browser-first assistant that transcribes speech in real time, det
 
 - **Client:** React + TypeScript + Vite, IndexedDB for local data
 - **Server:** Node.js 24 + Fastify + WebSocket
-- **AI:** Cloud speech-to-text and LLM APIs (provider/model IDs verified in Phase 3–4)
-- **Tooling:** pnpm, Vitest, Playwright (later), GitHub Actions
-- **Dev environment:** GitHub Codespaces (nothing installed on the local Mac)
+- **AI (free-first, $0/month target):** simulated transcription and answers by default; Groq free tier for transcription and answers; browser Web Speech API evaluated for transcription; Gemini free tier optional (no personal data). Paid providers are disabled by default and never used as an automatic fallback. See [ADR-009](docs/DECISIONS.md#adr-009-free-first-ai-provider-strategy).
+- **Tooling:** pnpm, Vitest, Playwright smoke tests from Phase 1 (Chromium), GitHub Actions
+- **Dev environment:** GitHub Codespaces and GitHub Actions only (nothing installed on the local Mac, no local AI models)
 - **Desktop:** Electron — deferred to Phase 7
 
 ## Getting started
 
-Application setup instructions will be added in Phase 1. Until then:
-
-```bash
-cp .env.example .env   # fill in keys locally; never commit .env
-```
+Application setup instructions will be added in Phase 1 (`docs/DEVELOPMENT.md`). No API key is needed to start: the app runs in simulated mode by default. Real providers (from Phase 3) are configured through Codespaces secrets; see [.env.example](.env.example) for the variable names. Never commit `.env`.

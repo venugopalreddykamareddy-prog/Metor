@@ -9,6 +9,12 @@ These rules apply to GitHub Copilot Agent Mode, Claude Code, and any other agent
 - Do not add a dependency without stating why, its install size, and the lighter alternative you considered. Prefer platform APIs (Web Audio, `fetch`, `WebSocket`, IndexedDB) over libraries.
 - Never generate the whole application in one change.
 
+## Development constraints
+
+- All installs and builds run in **GitHub Codespaces or GitHub Actions**. Never instruct the user to install anything on their Mac.
+- No local AI models (no Whisper/Ollama, no browser on-device speech language packs).
+- Keep dependencies and infrastructure minimal: no database server, no provider SDKs when `fetch` suffices.
+
 ## Project layout (from Phase 1)
 
 ```
@@ -30,8 +36,10 @@ Single `package.json` at the root, managed with **pnpm** (version pinned in `pac
 5. **No command execution:** Generated shell commands are displayed as text only. Never add code that executes them.
 6. **Consent and visibility:** Audio capture starts only from an explicit user action and always shows a visible indicator. Do not implement covert capture, auto-start, or screen-share concealment.
 7. **No persistence by default:** raw audio is never stored. Transcripts stay in memory unless the user opts in, and any storage feature ships with retention, expiry, and delete.
-8. **Authentication before spend:** no code path may call a paid provider for an unauthenticated caller. No credentials in URLs; cookies only.
-9. **Account for every paid call** through the spend ledger (reserve, then reconcile).
+8. **Authentication before any real provider:** no code path may call a real cloud API (Groq, Gemini, Web Speech, or any paid provider) for an unauthenticated caller. No credentials in URLs; cookies only. Logout or auth expiry closes the user's WebSockets.
+9. **Account for every provider call** through the spend + quota ledger (reserve, then reconcile). When usage is unknown, keep the full reservation.
+10. **Free-first:** default providers are `simulated`. Paid providers stay disabled (`ALLOW_PAID_PROVIDERS=false`). Never add an automatic fallback to a paid provider. On free-tier quota exhaustion, pause and tell the user. Never treat provider budget alerts as hard caps.
+11. **Provider data rules:** never send resume/KB content to the Gemini free tier. Verify model IDs, quotas, and data policies from official docs at the start of the phase that uses them (ADR-009).
 
 ## Code standards
 
@@ -49,6 +57,7 @@ pnpm dev           # run client + server
 pnpm test          # unit tests (Vitest)
 pnpm lint          # lint + typecheck
 pnpm build         # production build
+pnpm test:e2e      # Playwright smoke tests (Chromium)
 ```
 
 ## Before finishing a task

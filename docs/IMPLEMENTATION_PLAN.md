@@ -1,6 +1,8 @@
 # Implementation Plan
 
-Each phase must pass review against its acceptance criteria before the next begins. Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts, verified dependencies, and commands) at the start of each phase so they reflect current API docs and what we learned.
+Each phase must pass review against its acceptance criteria before the next begins. **Development constraints (all phases):** all installs and builds run in GitHub Codespaces or GitHub Actions; no additional installations on the Mac; no local AI models; minimal dependencies and infrastructure; $0 API spend by default (ADR-009).
+
+Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts, verified dependencies, and commands) at the start of each phase so they reflect current API docs and what we learned.
 
 **Rollback (all phases):** each phase is developed on a branch `phase-N-<name>` and merged via PR.
 
@@ -25,6 +27,8 @@ Each phase must pass review against its acceptance criteria before the next begi
 
 **Acceptance criteria**
 - [x] PR #1 review comments addressed (auth, URL credentials, spend accounting, reconnect, retention, phase mapping, devcontainer, toolchain pinning, early browser tests, rollback)
+- [x] Free-first provider strategy documented (ADR-009): Groq free tier, Web Speech evaluation, optional Gemini, simulated STT and answers, paid providers off by default, no paid fallback
+- [x] Conservative reservations for unknown usage; provider budget alerts not treated as hard caps; WebSocket termination on logout/expiry
 - [ ] User has reviewed and agreed with requirements, especially scope and acceptable-use controls
 - [ ] Mermaid diagrams render on GitHub
 - [ ] No secrets in repo; `.env` is ignored (`git check-ignore .env` prints `.env`)
@@ -66,8 +70,9 @@ docs/DEVELOPMENT.md (Codespace startup + secrets setup; short)
 - No extensions beyond ESLint, if any.
 
 **Codespaces secrets (from Phase 3; documented now in docs/DEVELOPMENT.md)**
-- GitHub → Settings → Codespaces → Secrets → New secret: `OPENAI_API_KEY`, `APP_PASSPHRASE_HASH`, scoped to this repository only.
+- GitHub → Settings → Codespaces → Secrets → New secret: `APP_PASSPHRASE_HASH`, `GROQ_API_KEY`, and optionally `GEMINI_API_KEY`, scoped to this repository only. No OpenAI or other paid key is needed.
 - Secrets appear as environment variables in new or rebuilt Codespaces. A local `.env` is not needed.
+- Free-tier accounts: **do not add a payment method** to Groq or enable billing on the Gemini project; that is what keeps spend at $0. Enable Groq Zero Data Retention.
 
 **Dependencies (expected; Copilot must confirm current versions via `pnpm add`, not hand-written versions)**
 - Runtime: `react`, `react-dom`, `fastify`, `@fastify/websocket`, `@fastify/static` (serve built client), a validation lib (`zod`) or Fastify JSON Schema
@@ -116,10 +121,10 @@ Create a single-package TypeScript project (pnpm, Node 24, "type": "module"):
 - .github/workflows/ci.yml: actions/setup-node with node-version-file .nvmrc, pnpm/action-setup
   (reads packageManager), pnpm install --frozen-lockfile, lint, test, build, then install
   Playwright Chromium and run test:e2e against the built app.
-- docs/DEVELOPMENT.md: how to start the Codespace, run the app, keep ports private, and add
-  Codespaces secrets. Keep it short.
+- docs/DEVELOPMENT.md: how to start the Codespace, run the app, keep ports private, add
+  Codespaces secrets, and keep free-tier provider accounts without a payment method. Keep it short.
 Add dependencies with `pnpm add` so versions are resolved, never hand-written.
-TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or auth yet.
+TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, auth, or any AI provider yet.
 ```
 
 **Acceptance criteria**
@@ -139,11 +144,11 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 ## Phase 2 — Microphone capture and simulated transcription
 
-**Objective:** Real mic capture with consent flow and indicator; audio frames streamed to server; server returns **simulated** partial/final transcripts; authentication and resume protocol in place **before** any paid provider exists. Zero API cost.
+**Objective:** Real mic capture with consent flow and indicator; audio frames streamed to server; server returns **simulated** partial/final transcripts; authentication and resume protocol in place **before** any real provider exists. Zero API cost.
 
-**Requirements:** FR-A1–A5, FR-S1 (in-memory session), NFR-11, session lifecycle (ARCHITECTURE §7), WS messages (§6.2), resume semantics (§6.3), authentication (SECURITY_PRIVACY §3.1).
+**Requirements:** FR-A1–A5, FR-S1 (in-memory session), FR-P4, NFR-11, session lifecycle (ARCHITECTURE §7), WS messages (§6.2), resume semantics (§6.3), authentication (SECURITY_PRIVACY §3.1).
 
-**Files:** `client/src/audio/capture.ts`, `client/src/audio/pcm-worklet.ts`, `client/src/ui/RecordingIndicator.tsx`, `client/src/ui/TranscriptPane.tsx`, `client/src/ui/ConsentDialog.tsx`, `client/src/ui/Login.tsx`, `server/src/auth/` (login, cookie sessions), `server/src/ws/session.ts` (session registry, grace period, seq tracking), `server/src/stt/types.ts` (adapter interface), `server/src/stt/simulated.ts`, `scripts/hash-passphrase.ts`, unit + integration + e2e tests.
+**Files:** `client/src/audio/capture.ts`, `client/src/audio/pcm-worklet.ts`, `client/src/ui/RecordingIndicator.tsx`, `client/src/ui/TranscriptPane.tsx`, `client/src/ui/ConsentDialog.tsx`, `client/src/ui/Login.tsx`, `server/src/auth/` (login, cookie sessions, per-session socket registry), `server/src/ws/session.ts` (session registry, grace period, seq tracking), `server/src/providers/config.ts` (`STT_PROVIDER`/`ANSWER_PROVIDER`/`ALLOW_PAID_PROVIDERS` parsing and startup checks; only `simulated` accepted in this phase), `server/src/stt/types.ts` (adapter interface with `billing` field), `server/src/stt/simulated.ts`, `scripts/hash-passphrase.ts`, unit + integration + e2e tests.
 
 **Dependencies:** none new expected (Web Audio API, AudioWorklet, Node `crypto` scrypt are built in). `@fastify/cookie` if needed; justify per AGENTS.md.
 
@@ -151,6 +156,8 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 **Acceptance criteria**
 - [ ] Login required. Unauthorized HTTP gets 401, WS without cookie or with a wrong Origin is rejected, brute force gets 429 (integration tests)
+- [ ] Logout closes the user's open WebSockets with `4401`; session expiry (mocked clock) does the same; client stops capture and shows login (integration + e2e)
+- [ ] Startup checks: any non-simulated provider without `APP_PASSPHRASE_HASH` → refuses to start; `ALLOW_PAID_PROVIDERS` defaults to `false` (unit tests)
 - [ ] Start shows consent dialog → browser permission prompt → indicator + timer visible
 - [ ] Audio frames reach the server with sequence numbers (debug counter of bytes/sec in dev panel)
 - [ ] Simulated partials appear in grey and are replaced by finals
@@ -160,7 +167,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 - [ ] Terminal failure stops all media tracks and hides the indicator
 - [ ] Transcript is held in memory only; nothing is written to IndexedDB
 - [ ] Unit tests: STT adapter interface, simulated transcript sequencing, PCM conversion, frame seq encoding
-- [ ] **E2E (Playwright, Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`):** login → start → simulated transcript appears → stop → assert tracks ended and indicator hidden; permission-denied path shows error
+- [ ] **E2E (Playwright, Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`):** login → start → simulated transcript appears → stop → assert tracks ended and indicator hidden; permission-denied path shows error; logout during capture → tracks ended, indicator hidden, login shown
 
 **Risks:** AudioWorklet loading under Vite; sample-rate differences across devices; cookie `Secure` flag on non-HTTPS localhost in tests (Chromium treats localhost as secure; verify).
 
@@ -168,15 +175,15 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 ## Phase 3 — Real-time transcription integration
 
-**Objective:** Replace simulated STT with a real streaming provider behind the same adapter.
+**Objective:** Add free real transcription behind the same adapter: `GroqSTT` (server, per-utterance upload) and an evaluated `webspeech` client option. Simulated stays the default.
 
-**Entry gate:** Phase 2 auth and resume tests pass. The server refuses to start with a real key unless `APP_PASSPHRASE_HASH` is set.
+**Entry gate:** Phase 2 auth, socket-termination, and resume tests pass. The server refuses to start with any real provider unless `APP_PASSPHRASE_HASH` is set.
 
-**Key tasks:** verify current official provider docs (endpoint, auth, audio format, model ID, pricing, data retention, console budget limits); implement the **spend ledger (ARCHITECTURE §11.1) before the first real provider call**; implement provider adapter; decide ADR-005 (relay vs ephemeral client token) with measured latency; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option; set the provider-side budget.
+**Key tasks:** re-verify official docs for Groq (endpoint, models, formats, free-tier limits from the account limits page, data policy, ZDR) and Web Speech (browser support, `start(audioTrack)`, vendor data policy); implement the **spend + quota ledger (ARCHITECTURE §11.1) before the first real provider call**, including conservative reservations for unknown usage; implement `GroqSTT` (silence-bounded segments, WAV header, ≥10 s accounting, 429/`retry-after` → `quota_exhausted`); implement the `webspeech` client adapter behind login (mic, plus Chromium tab track if it works; restart on end; no `processLocally`); compare both on 3 test recordings (accuracy on technical terms, latency) and record results; decide ADR-005; enforce `MAX_TRANSCRIPTION_MINUTES`; add Chromium tab-audio source option.
 
-**Acceptance:** partial transcript p50 < 1.0 s measured in debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test) and refuses calls over the daily limit; upstream STT closes on disconnect; provider data policy documented in SECURITY_PRIVACY.md. CI never calls the real provider.
+**Acceptance:** Groq end-of-utterance → final p50 < 2.0 s and Web Speech partial p50 < 1.0 s, measured in the debug panel on 3 test recordings; reconnect within 5 s after network drop; ledger survives a server restart mid-session (test), keeps reservations when usage is unknown (test), and refuses calls over local quota or a non-zero spend limit; mocked provider 429 → feature pauses with reset time and **no provider switch** (test); upstream calls stop on disconnect and on logout; Web Speech unavailable until logged in (test); provider data policies re-verified in SECURITY_PRIVACY §2.2. CI never calls a real provider.
 
-**Risks:** provider API changes; cost during testing (use short clips, keep simulated mode default).
+**Risks:** free-tier limits or models change; Groq per-utterance latency; Web Speech behavior differs by browser and may not accept display-capture tracks.
 
 ---
 
@@ -184,11 +191,11 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 **Objective:** Detect questions, classify type, stream answers with cancellation and de-dup.
 
-**Key tasks:** heuristic detector (pure functions + test table of 50+ real phrasings); silence debounce; de-dup; answer engine with prompt templates per type/length; `answer.*` messages; Markdown sanitized rendering; ledger reservations for classification and answers; timing instrumentation. Sessions remain in memory only (FR-S1).
+**Key tasks:** heuristic detector (pure functions + test table of 50+ real phrasings); silence debounce; de-dup; answer engine with prompt templates per type/length; **`SimulatedAnswer` adapter first** (streams canned, type-appropriate answers for UI and CI); `GroqAnswer` adapter (re-verify model IDs and free-tier limits); optional `GeminiAnswer` adapter (requires `GEMINI_FREE_TIER_DATA_ACK=true`, strips KB content, refused in live modes); `answer.*` messages; Markdown sanitized rendering; ledger reservations for classification and answers; quota-exhausted handling with no automatic fallback; timing instrumentation. Sessions remain in memory only (FR-S1).
 
 **No personal-experience claims yet (FR-Q8):** without a verified KB, prompts instruct general/theoretical answers. Behavioral questions get a clearly labeled example approach, never a first-person story.
 
-**Acceptance:** 0 duplicate requests in test script; first-token p50 < 1.5 s; cancel stops upstream request and reconciles the reservation; detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
+**Acceptance:** 0 duplicate requests in test script; first-token p50 < 1.5 s (Groq); cancel stops upstream request and keeps the reservation unless usage is reported; Gemini adapter never receives KB content (test); quota exhaustion never selects another provider (test); detector precision/recall measured on the test table (target ≥ 85% each); prompt eval confirms no first-person experience claims.
 
 ---
 
@@ -196,7 +203,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 **Objective:** Knowledge base with provenance labels, grounded answers.
 
-**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI with provenance labels; text/Markdown import; keyword retrieval; prompt grounding + injection defenses; **opt-in session persistence (FR-S1b) shipped together with retention, expiry purge, per-session delete, "delete everything", and export (FR-S4)**; UI note that local deletion does not affect provider retention.
+**Key tasks:** IndexedDB schema (`kb`, `sessions`, `settings`); KB editor UI with provenance labels; grounded answers only via providers allowed to receive personal data (Groq with ZDR, not Gemini free tier); text/Markdown import; keyword retrieval; prompt grounding + injection defenses; **opt-in session persistence (FR-S1b) shipped together with retention, expiry purge, per-session delete, "delete everything", and export (FR-S4)**; UI note that local deletion does not affect provider retention.
 
 **Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; injection test documents ("ignore previous instructions…") do not change behavior; with persistence off (the default), nothing session-related is written to IndexedDB (test); expired sessions are purged on startup (test with a mocked clock).
 
@@ -222,7 +229,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 
 ## Phase 8 — Security, reliability, and performance optimization
 
-**Objective:** Harden and measure: CSP, rate limits, dependency audit, secret scanning in CI, load test of WS server, memory profiling of 60-min session, cost report.
+**Objective:** Harden and measure: CSP, rate limits, dependency audit, secret scanning in CI, load test of WS server (simulated providers only), memory profiling of 60-min session, cost and free-quota usage report.
 
 **Acceptance:** all SECURITY_PRIVACY §5 items checked; NFR targets measured and recorded in this file.
 
@@ -241,10 +248,10 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio or
 | Level | Tool | Scope |
 |---|---|---|
 | Unit | Vitest | Pure logic: detection, de-dup, prompt building, message validation, backoff, PCM conversion |
-| Integration | Vitest + Fastify `inject` / WS client | Server routes, auth (unauthorized paths), WS protocol, resume semantics, ledger persistence, adapter with simulated provider |
+| Integration | Vitest + Fastify `inject` / WS client | Server routes, auth (unauthorized paths, socket termination on logout/expiry), WS protocol, resume semantics, ledger persistence and conservative reservations, provider startup checks, quota exhaustion with mocked 429s, adapters with simulated providers |
 | E2E smoke | Playwright, Chromium only (from Phase 1) | Phase 1: load + WS echo against the built app. Phase 2: fake-media permission, start/stop, track release, denied path. Grows each phase. |
 | E2E full | Playwright (Phase 9) | Full regression with a WAV fixture via `--use-file-for-fake-audio-capture` |
 | Prompt evals | Scripted fixture set (Phase 4–6) | Grounding (no fabrication), format compliance, injection resistance |
 | Performance | Debug panel timings + scripted runs | NFR-1, NFR-2, NFR-4 |
 
-CI (GitHub Actions) runs lint, typecheck, unit, integration on every push. Tests never call paid APIs; provider adapters are mocked or simulated.
+CI (GitHub Actions) runs lint, typecheck, unit, integration, and (from Phase 1) Playwright smoke tests on every push. Tests never call real providers, free or paid, so they use no quota; provider adapters are mocked or simulated.

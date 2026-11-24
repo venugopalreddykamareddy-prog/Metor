@@ -22,9 +22,10 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-A1 | User starts/stops microphone capture with an explicit button | P0 |
 | FR-A2 | Visible recording indicator whenever audio is captured or streamed | P0 |
 | FR-A3 | Partial (interim) transcript displayed while speaking; final segments replace partials | P0 |
-| FR-A4 | Simulated transcription mode for development and tests (no API cost) | P0 |
+| FR-A4 | Simulated transcription mode for development and tests (no API cost); default provider | P0 |
 | FR-A5 | Pause/resume without losing session state | P0 |
 | FR-A6 | Speaker separation: at minimum "me" vs "other" when two sources are available | P2 |
+| FR-A8 | Configurable transcription provider: simulated, Groq free tier, or browser Web Speech API (ADR-009) | P0 |
 | FR-A7 | Capture of meeting audio (Teams, Zoom, Meet, Webex) — see [ARCHITECTURE § 4](ARCHITECTURE.md#4-audio-capture) for platform limits | P1 (tab audio) / P2 (system audio) |
 
 ### 2.2 Question detection and answers
@@ -38,6 +39,7 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 | FR-Q5 | Classify question type: conceptual, troubleshooting, behavioral, coding, system design, other | P0 |
 | FR-Q6 | Configurable answer length: short (~30 s), standard (~1 min), detailed (2–3 min spoken) | P0 |
 | FR-Q7 | Follow-up awareness: recent Q&A turns are included in context | P0 |
+| FR-Q9 | Simulated answer generation (no API cost); configurable answer provider: simulated, Groq free tier, or optional Gemini free tier without personal data (ADR-009) | P0 |
 | FR-Q8 | Until verified KB support ships (Phase 5), answers must not claim personal experience. They use general and theoretical explanations, and behavioral questions get a labeled example approach, not a first-person story. | P0 |
 
 ### 2.3 Answer formats
@@ -52,18 +54,28 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 
 Answers should sound conversational (a brief natural opener, plain sentences, natural close), not like a textbook. STAR is never forced onto technical questions.
 
-### 2.4 Knowledge base
+### 2.4 Providers and cost (ADR-009)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-P1 | Target $0 monthly API spend; simulated providers by default | P0 |
+| FR-P2 | Paid providers disabled by default via `ALLOW_PAID_PROVIDERS=false` | P0 |
+| FR-P3 | Free-tier quota exhaustion pauses the feature with a clear message and reset time; **never** falls back automatically to a paid provider | P0 |
+| FR-P4 | Authentication required before any real cloud API, free or paid, including Web Speech | P0 |
+| FR-P5 | UI shows the active provider, remaining local quota, and whether data leaves the device | P0 |
+
+### 2.5 Knowledge base
 
 | ID | Requirement | Priority |
 |---|---|---|
 | FR-K1 | Store multiple resumes and job descriptions; select active resume + JD per session | P1 |
 | FR-K2 | Store experience items, projects, incidents, achievements, STAR stories, past questions, answer preferences | P1 |
 | FR-K3 | Every item has a **provenance label**: `verified` (hands-on), `theoretical` (knowledge, no hands-on claim), `hypothetical` (illustrative only) | P1 |
-| FR-K4 | AI may claim experience only from `verified` items; it must label hypotheticals as such | P1 |
+| FR-K4 | AI may claim experience only from `verified` items; it must label hypotheticals as such. KB content is never sent to the Gemini free tier. | P1 |
 | FR-K5 | Import from pasted text, `.txt`, `.md`; PDF/DOCX import is P2 (adds dependencies) | P1 |
 | FR-K6 | Export and delete all data | P1 |
 
-### 2.5 Sessions
+### 2.6 Sessions
 
 | ID | Requirement | Priority |
 |---|---|---|
@@ -73,13 +85,13 @@ Answers should sound conversational (a brief natural opener, plain sentences, na
 | FR-S3 | Session history list with search (requires FR-S1b) | P1 |
 | FR-S4 | Retention 7/30/90 days, expiry purge, per-session delete, "delete everything". **Ships in the same phase as FR-S1b; never later.** | P1 (Phase 5) |
 
-### 2.6 Practice mode (Phase 6)
+### 2.7 Practice mode (Phase 6)
 
 - Question bank per profile and topic; random or targeted drills.
 - User answers aloud; AI gives feedback on accuracy, structure, and delivery.
 - Track weak topics across sessions.
 
-### 2.7 Desktop (Phase 7)
+### 2.8 Desktop (Phase 7)
 
 - Electron app with a floating, resizable, always-on-top answer window.
 - Window is **visible to screen capture** like any normal window (no content-protection/hiding flags).
@@ -99,21 +111,22 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 
 | ID | Category | Target |
 |---|---|---|
-| NFR-1 | Partial transcript latency (speech → text on screen) | p50 < 1.0 s, p95 < 2.0 s |
+| NFR-1 | Partial transcript latency (speech → text on screen) | p50 < 1.0 s, p95 < 2.0 s for streaming sources (Web Speech interim results). Groq returns finals per utterance; its end-of-utterance → final latency is measured and recorded, target p50 < 2.0 s. |
 | NFR-2 | Time to first answer token (question end → first token) | p50 < 1.5 s, p95 < 3.0 s |
 | NFR-3 | Duplicate AI requests per detected question | 0 |
 | NFR-4 | Browser memory for a 60-min session | < 300 MB tab |
 | NFR-5 | Local storage per 60-min session (text only) | < 2 MB |
 | NFR-6 | WebSocket reconnect after drop | Resume per ARCHITECTURE §6.3 within 5 s on a healthy network; no duplicate or reordered finals |
-| NFR-7 | Spending | Server-enforced per-session and daily limits that survive reconnects and restarts (ARCHITECTURE §11.1). Estimate-based; the provider-side budget is the hard backstop. |
+| NFR-7 | Spending | $0 by default. Server-enforced per-session, daily spend, and free-tier quota limits that survive reconnects and restarts, with conservative reservations when usage is unknown (ARCHITECTURE §11.1). Provider budget alerts are not treated as hard caps. |
 | NFR-8 | Security | No API key in client bundle; all inputs validated; see SECURITY_PRIVACY.md |
-| NFR-11 | Authentication | Caller authentication required before any paid provider is enabled (SECURITY_PRIVACY §3.1) |
+| NFR-11 | Authentication | Caller authentication required before any real cloud provider (free or paid) is enabled; logout/expiry terminates active WebSockets (SECURITY_PRIVACY §3.1) |
 | NFR-9 | Accessibility | Keyboard operable; WCAG AA contrast; resizable text |
 | NFR-10 | Browsers | Latest Chrome and Edge (P0); Firefox/Safari best-effort with documented limits |
 
 ## 5. Out of scope
 
-- Local speech or language models (Whisper, Ollama, etc.).
+- Local speech or language models (Whisper, Ollama, browser on-device speech language packs, etc.).
+- Paid AI providers in the MVP (each requires an ADR; disabled by default).
 - Native mobile apps.
 - Multi-user accounts / cloud sync (single-user, local-first).
 - Executing generated commands.
