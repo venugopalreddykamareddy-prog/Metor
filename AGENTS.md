@@ -54,6 +54,7 @@ Single `package.json` at the root, managed with **pnpm** (version pinned in `pac
 
 ```bash
 pnpm install       # install dependencies
+pnpm hash-passphrase  # hash a login passphrase for .env (reads stdin)
 pnpm dev           # run client + server
 pnpm test          # unit tests (Vitest)
 pnpm lint          # lint + typecheck (pnpm typecheck runs tsc alone)

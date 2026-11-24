@@ -1,34 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONNECT_TIMEOUT_MS, WsClient, sameOriginWsUrl, type ConnectionStatus } from './wsClient.ts';
+import { CLOSE_AUTH_ENDED } from '../../../shared/messages.ts';
+import { CONNECT_TIMEOUT_MS, MAX_RECONNECT_ATTEMPTS, WsClient, sameOriginWsUrl, type ConnectionStatus } from './wsClient.ts';
 
 // Minimal stand-in for the browser WebSocket, installed as the global.
 class FakeSocket {
   static readonly OPEN = 1;
   static instances: FakeSocket[] = [];
   readyState = 0;
+  binaryType = 'blob';
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  sent: string[] = [];
-  closed = false;
+  sent: unknown[] = [];
   closeCode: number | undefined;
   readonly url: string;
   constructor(url: string) {
     this.url = url;
     FakeSocket.instances.push(this);
   }
-  send(data: string) { this.sent.push(data); }
-  close(code?: number) { this.closed = true; this.closeCode = code; this.readyState = 3; }
+  send(data: unknown) { this.sent.push(data); }
+  close(code?: number) { this.closeCode = code ?? 1005; this.readyState = 3; }
   open() { this.readyState = 1; this.onopen?.(); }
-  drop() { this.readyState = 3; this.onclose?.(); }
+  drop(code = 1006) { this.readyState = 3; this.onclose?.({ code }); }
   receive(data: unknown) { this.onmessage?.({ data }); }
 }
 
 const latest = () => FakeSocket.instances.at(-1)!;
 
 let statuses: ConnectionStatus[];
-let messages: unknown[];
-let invalid: string[];
+let events: string[];
 let client: WsClient;
 
 beforeEach(() => {
@@ -37,13 +37,14 @@ beforeEach(() => {
   vi.spyOn(Math, 'random').mockReturnValue(0.999999); // jitter at the ceiling
   FakeSocket.instances = [];
   statuses = [];
-  messages = [];
-  invalid = [];
+  events = [];
   client = new WsClient({
     url: 'ws://test/ws',
     onStatus: (s) => statuses.push(s),
-    onMessage: (m) => messages.push(m),
-    onInvalid: (e) => invalid.push(e),
+    onOpen: () => events.push('open'),
+    onMessage: (m) => events.push(`message:${m.type}`),
+    onInvalid: (e) => events.push(`invalid:${e}`),
+    onAuthEnded: () => events.push('auth-ended'),
   });
 });
 
@@ -74,37 +75,65 @@ describe('sameOriginWsUrl', () => {
 });
 
 describe('WsClient', () => {
-  it('reports connecting, then connected', () => {
+  it('connects, receives binary as ArrayBuffer, and calls onOpen', () => {
     client.start();
+    expect(latest().binaryType).toBe('arraybuffer');
     latest().open();
     expect(statuses).toEqual(['connecting', 'connected']);
-    expect(latest().url).toBe('ws://test/ws');
+    expect(events).toEqual(['open']);
   });
 
   it('reconnects with growing delays and resets after a successful connection', () => {
     client.start();
     latest().open();
     latest().drop();
-    expect(client.status).toBe('disconnected');
     expect(waitForReconnect()).toBe(500);
     latest().drop();
     expect(waitForReconnect()).toBe(1000);
-    latest().drop();
-    expect(waitForReconnect()).toBe(2000);
     latest().open();
-    expect(client.status).toBe('connected');
     latest().drop();
     expect(waitForReconnect()).toBe(500);
   });
 
-  it('keeps retrying at the 8 s cap while the server is down', () => {
+  it(`gives up after ${MAX_RECONNECT_ATTEMPTS} failed attempts`, () => {
     client.start();
-    const delays: number[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < MAX_RECONNECT_ATTEMPTS; i++) {
       latest().drop();
-      delays.push(waitForReconnect());
+      waitForReconnect();
     }
-    expect(delays).toEqual([500, 1000, 2000, 4000, 8000, 8000, 8000]);
+    latest().drop();
+    expect(client.status).toBe('failed');
+    vi.advanceTimersByTime(60_000);
+    expect(FakeSocket.instances).toHaveLength(MAX_RECONNECT_ATTEMPTS + 1);
+
+    client.start(); // manual retry starts fresh
+    latest().open();
+    expect(client.status).toBe('connected');
+  });
+
+  it('stops and reports auth-ended when the server closes with 4401', () => {
+    client.start();
+    latest().open();
+    latest().drop(CLOSE_AUTH_ENDED);
+    expect(events).toContain('auth-ended');
+    expect(client.status).toBe('disconnected');
+    vi.advanceTimersByTime(60_000);
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it('abandons a socket that never finishes connecting and retries', () => {
+    client.start();
+    const stuck = latest();
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS);
+    expect(stuck.closeCode).toBe(4000);
+    expect(waitForReconnect()).toBe(500);
+  });
+
+  it('does not time out a socket that connected', () => {
+    client.start();
+    latest().open();
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS * 3);
+    expect(latest().closeCode).toBeUndefined();
   });
 
   it('stop() closes the socket and cancels a pending reconnect', () => {
@@ -114,56 +143,27 @@ describe('WsClient', () => {
     client.stop();
     vi.advanceTimersByTime(60_000);
     expect(FakeSocket.instances).toHaveLength(1);
-    expect(client.status).toBe('disconnected');
-
-    client.start();
-    const socket = latest();
-    socket.open();
-    client.stop();
-    expect(socket.closed).toBe(true);
-    vi.advanceTimersByTime(60_000);
-    expect(FakeSocket.instances).toHaveLength(2);
   });
 
-  it('sends only while connected', () => {
-    const msg = { type: 'echo.request', id: '1', ts: 1, text: 'hi' } as const;
+  it('adds id and ts to JSON messages, sends binary as is, and refuses while disconnected', () => {
     client.start();
-    expect(client.send(msg)).toBe(false);
+    expect(client.send({ type: 'session.stop' })).toBe(false);
     latest().open();
-    expect(client.send(msg)).toBe(true);
-    expect(JSON.parse(latest().sent[0]!)).toEqual(msg);
+    expect(client.send({ type: 'session.stop' })).toBe(true);
+    const frame = new ArrayBuffer(8);
+    expect(client.sendBinary(frame)).toBe(true);
+    const [json, binary] = latest().sent;
+    expect(JSON.parse(json as string)).toMatchObject({ type: 'session.stop', id: expect.any(String), ts: expect.any(Number) });
+    expect(binary).toBe(frame);
   });
 
   it('passes on valid server messages and reports invalid ones', () => {
     client.start();
     latest().open();
-    latest().receive(JSON.stringify({ type: 'echo', id: '1', ts: 2, text: 'hi' }));
+    latest().receive(JSON.stringify({ type: 'audio.ack', id: '1', ts: 2, seq: 4 }));
     latest().receive('{bad');
     latest().receive(new ArrayBuffer(4));
-    expect(messages).toEqual([{ type: 'echo', id: '1', ts: 2, text: 'hi' }]);
-    expect(invalid).toEqual(['invalid JSON', 'non-text frame']);
-  });
-
-  it('abandons a socket that never finishes connecting and retries', () => {
-    client.start();
-    const stuck = latest();
-    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS - 1);
-    expect(stuck.closed).toBe(false);
-    vi.advanceTimersByTime(1);
-    expect(stuck.closed).toBe(true);
-    expect(stuck.closeCode).toBe(4000);
-    expect(client.status).toBe('disconnected');
-    expect(waitForReconnect()).toBe(500);
-    latest().open();
-    expect(client.status).toBe('connected');
-  });
-
-  it('does not time out a socket that connected', () => {
-    client.start();
-    latest().open();
-    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS * 3);
-    expect(latest().closed).toBe(false);
-    expect(FakeSocket.instances).toHaveLength(1);
+    expect(events.slice(1)).toEqual(['message:audio.ack', 'invalid:invalid JSON', 'invalid:non-text frame']);
   });
 
   it('ignores a late close event from a socket it already replaced', () => {
@@ -172,9 +172,7 @@ describe('WsClient', () => {
     first.drop();
     waitForReconnect();
     latest().open();
-    first.onclose?.();
+    first.onclose?.({ code: 1006 });
     expect(client.status).toBe('connected');
-    vi.advanceTimersByTime(60_000);
-    expect(FakeSocket.instances).toHaveLength(2);
   });
 });

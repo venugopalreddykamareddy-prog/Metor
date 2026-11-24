@@ -1,23 +1,28 @@
-import { parseServerMessage, type ClientMessage, type ServerMessage } from '../../../shared/messages.ts';
+import { CLOSE_AUTH_ENDED, parseServerMessage, type ClientMessageBody, type ServerMessage } from '../../../shared/messages.ts';
 import { backoffDelay } from './backoff.ts';
 
 /** A socket still connecting after this long is abandoned and retried. */
 export const CONNECT_TIMEOUT_MS = 10_000;
+/** 0.5 + 1 + 2 + 4 + 8 + 8 s ≈ 24 s of retries, inside the server's 30 s resume window. */
+export const MAX_RECONNECT_ATTEMPTS = 6;
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'failed';
 
 export interface WsClientOptions {
   url: string;
   onStatus?: (status: ConnectionStatus) => void;
+  onOpen?: () => void;
   onMessage?: (message: ServerMessage) => void;
   onInvalid?: (error: string) => void;
+  /** The server closed the socket because the login session ended. The client stops. */
+  onAuthEnded?: () => void;
 }
 
 export function sameOriginWsUrl(loc: Pick<Location, 'protocol' | 'host'>): string {
   return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`;
 }
 
-/** WebSocket that reconnects with backoff until stop() is called. */
+/** WebSocket that reconnects with backoff until stop(), auth ends, or retries run out. */
 export class WsClient {
   private readonly opts: WsClientOptions;
   private socket: WebSocket | null = null;
@@ -35,26 +40,34 @@ export class WsClient {
     return this._status;
   }
 
+  get isOpen(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.failedAttempts = 0;
     this.connect();
   }
 
   stop(): void {
     this.running = false;
-    if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.clearReconnectTimer();
     this.dropSocket(1000, 'client stopped');
     this.setStatus('disconnected');
   }
 
   /** Returns false when not connected. Messages are not queued. */
-  send(message: ClientMessage): boolean {
-    if (this.socket?.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(JSON.stringify(message));
+  send(message: ClientMessageBody): boolean {
+    if (!this.isOpen) return false;
+    this.socket?.send(JSON.stringify({ ...message, id: crypto.randomUUID(), ts: Date.now() }));
+    return true;
+  }
+
+  sendBinary(data: ArrayBuffer): boolean {
+    if (!this.isOpen) return false;
+    this.socket?.send(data);
     return true;
   }
 
@@ -68,6 +81,7 @@ export class WsClient {
       this.scheduleReconnect();
       return;
     }
+    socket.binaryType = 'arraybuffer';
     this.socket = socket;
     // A blackholed network can leave the handshake pending for minutes.
     this.connectTimer = setTimeout(() => {
@@ -78,6 +92,7 @@ export class WsClient {
       this.clearConnectTimer();
       this.failedAttempts = 0;
       this.setStatus('connected');
+      this.opts.onOpen?.();
     };
     socket.onmessage = (event) => {
       if (typeof event.data !== 'string') {
@@ -89,10 +104,16 @@ export class WsClient {
       else this.opts.onInvalid?.(parsed.error);
     };
     // Browsers always fire close after error, so reconnect is handled only here.
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.clearConnectTimer();
       this.socket = null;
+      if (event.code === CLOSE_AUTH_ENDED) {
+        this.running = false;
+        this.setStatus('disconnected');
+        this.opts.onAuthEnded?.();
+        return;
+      }
       this.scheduleReconnect();
     };
   }
@@ -107,19 +128,27 @@ export class WsClient {
     socket.close(code, reason);
   }
 
-  private clearConnectTimer(): void {
-    if (this.connectTimer !== null) {
-      clearTimeout(this.connectTimer);
-      this.connectTimer = null;
-    }
-  }
-
   private scheduleReconnect(): void {
     if (!this.running) return;
+    if (this.failedAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      this.running = false;
+      this.setStatus('failed');
+      return;
+    }
     this.setStatus('disconnected');
     const delay = backoffDelay(this.failedAttempts);
     this.failedAttempts += 1;
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) clearTimeout(this.connectTimer);
+    this.connectTimer = null;
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   private setStatus(status: ConnectionStatus): void {

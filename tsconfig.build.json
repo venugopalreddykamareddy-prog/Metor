@@ -6,5 +6,9 @@
   "exclude": [
     "**/*.test.ts",
     "dist"
+  ],
+  "include": [
+    "server",
+    "shared"
   ]
 }
