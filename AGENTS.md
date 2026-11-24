@@ -22,7 +22,8 @@ These rules apply to Claude Code, GitHub Copilot, and any other agent working on
 client/        React + Vite app (browser)
 server/        Fastify server (Node 24)
 shared/        Types shared by client and server (message schemas)
-docs/          Design documentation
+e2e/           Playwright browser smoke tests
+docs/          Design documentation (start with docs/DEVELOPMENT.md)
 ```
 
 Single `package.json` at the root, managed with **pnpm** (version pinned in `packageManager`; Node pinned in `.nvmrc`). No monorepo tooling (Nx, Turborepo, workspaces) unless an ADR approves it.
@@ -55,8 +56,9 @@ Single `package.json` at the root, managed with **pnpm** (version pinned in `pac
 pnpm install       # install dependencies
 pnpm dev           # run client + server
 pnpm test          # unit tests (Vitest)
-pnpm lint          # lint + typecheck
+pnpm lint          # lint + typecheck (pnpm typecheck runs tsc alone)
 pnpm build         # production build
+pnpm start         # serve the build on one port (8787)
 pnpm test:e2e      # Playwright smoke tests (Chromium)
 ```
 

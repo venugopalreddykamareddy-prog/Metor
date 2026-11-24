@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in ci.yml current. npm updates are done by hand for now.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

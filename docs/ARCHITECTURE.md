@@ -65,7 +65,7 @@ flowchart LR
 | Transcription adapter | `server/src/stt/` | Provider-agnostic interface; `SimulatedSTT`, `GroqSTT` (segment upload) |
 | Answer engine | `server/src/answer/` | Classify → build prompt → stream LLM → forward tokens; cancellation. Adapters: `SimulatedAnswer`, `GroqAnswer`, optional `GeminiAnswer` |
 | Spend + quota ledger | `server/src/limits/` | File-backed ledger; reserve cost and free-tier quota before every upstream call, reconcile after (§11.1) |
-| Shared schemas | `shared/` | Message types + runtime validation (e.g. `zod` or Fastify JSON Schema — decide in Phase 1) |
+| Shared schemas | `shared/` | Message types + runtime validation with `zod` (ADR-010) |
 
 ## 4. Audio capture
 

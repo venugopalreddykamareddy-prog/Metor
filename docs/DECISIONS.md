@@ -140,3 +140,23 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 - Web Speech transcripts come from the browser, not the server, so the server cannot rate-limit them; they cost nothing, but audio goes to the browser vendor under its policy.
 - Gemini cannot be used for resume-grounded answers on the free tier.
 - Model IDs stay in env vars, never hard-coded, because free-tier model lists change often.
+
+---
+
+## ADR-010: Phase 1 tooling — native TypeScript in Node, zod, no extra runners
+
+**Status:** Accepted · 2026-11-24 (Phase 1)
+
+**Context:** ADR-002 left the server TypeScript runner and the validation library to Phase 1. The plan expected `tsx` and `concurrently`. Dependencies must stay minimal.
+
+**Decision:**
+
+- **Server TypeScript:** Node 24 runs `.ts` files directly (type stripping). Dev uses `node --watch server/src/index.ts`, so **no `tsx`**. Code uses only erasable syntax (`erasableSyntaxOnly`) and explicit `.ts` import extensions; `tsc` compiles to `dist/` with `rewriteRelativeImportExtensions` for production.
+- **Parallel dev scripts:** `pnpm run --parallel "/^dev:/"`, so **no `concurrently`**.
+- **Validation:** `zod` in `shared/messages.ts`, used by both client and server. One schema gives runtime validation and TypeScript types; it has no dependencies of its own. Fastify JSON Schema would cover only the server.
+- **TypeScript pinned to `~6.0`:** TypeScript 7 is `latest` on npm, but `typescript-eslint` 8.x supports `<6.1`. Revisit when it supports 7.
+- **`@types/ws` as a direct dev dependency:** `@fastify/websocket`'s type definitions import `ws` but don't ship its types. Code never imports `ws` directly; tests take the socket type from `@fastify/websocket`.
+- **Playwright:** Chromium **headless shell only** (`--only-shell`, ~280 MB), not full Chromium (~410 MB more).
+
+**Consequences:** Two fewer runtime tools to install and update. Server code cannot use enums, namespaces or parameter properties. TypeScript stays one major version behind until lint tooling catches up.
+

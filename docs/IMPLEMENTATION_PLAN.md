@@ -15,7 +15,7 @@ Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts,
 
 ---
 
-## Phase 0 — Environment assessment and documentation ✅ (in review)
+## Phase 0 — Environment assessment and documentation ✅ (merged, PR #1)
 
 **Objective:** Confirm the dev environment and establish requirements, architecture, and agent rules.
 
@@ -29,14 +29,14 @@ Phases 0–2 are detailed; later phases are refined (with exact Copilot prompts,
 - [x] PR #1 review comments addressed (auth, URL credentials, spend accounting, reconnect, retention, phase mapping, devcontainer, toolchain pinning, early browser tests, rollback)
 - [x] Free-first provider strategy documented (ADR-009): Groq free tier, Web Speech evaluation, optional Gemini, simulated STT and answers, paid providers off by default, no paid fallback
 - [x] Conservative reservations for unknown usage; provider budget alerts not treated as hard caps; WebSocket termination on logout/expiry
-- [ ] User has reviewed and agreed with requirements, especially scope and acceptable-use controls
-- [ ] Mermaid diagrams render on GitHub
-- [ ] No secrets in repo; `.env` is ignored (`git check-ignore .env` prints `.env`)
-- [ ] Repo settings: secret scanning + push protection enabled (GitHub → Settings → Code security)
+- [x] User has reviewed and agreed with requirements, especially scope and acceptable-use controls (approved merge of PR #1)
+- [x] Mermaid diagrams render on GitHub (all 5 diagrams parse with Mermaid 11)
+- [x] No secrets in repo; `.env` is ignored (`git check-ignore .env` prints `.env`; full history scanned)
+- [ ] Repo settings: secret scanning + push protection enabled (GitHub → Settings → Code security) — not readable with the Codespace token; owner to confirm
 
 ---
 
-## Phase 1 — Lightweight web application foundation
+## Phase 1 — Lightweight web application foundation ✅ (merged, PR #2)
 
 **Objective:** Runnable skeleton: Vite React client + Fastify server + typed WebSocket echo, with pinned toolchain, devcontainer, lint, typecheck, tests, a browser smoke test, and CI.
 
@@ -74,17 +74,18 @@ docs/DEVELOPMENT.md (Codespace startup + secrets setup; short)
 - Secrets appear as environment variables in new or rebuilt Codespaces. A local `.env` is not needed.
 - Free-tier accounts: **do not add a payment method** to Groq or enable billing on the Gemini project; that is what keeps spend at $0. Enable Groq Zero Data Retention.
 
-**Dependencies (expected; Copilot must confirm current versions via `pnpm add`, not hand-written versions)**
-- Runtime: `react`, `react-dom`, `fastify`, `@fastify/websocket`, `@fastify/static` (serve built client), a validation lib (`zod`) or Fastify JSON Schema
-- Dev: `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react`, `@types/react-dom`, `vitest`, `eslint` + `typescript-eslint`, `tsx` (run server TS in dev), `concurrently` (or a tiny script) for `pnpm dev`, `@playwright/test` (Chromium only)
+**Dependencies (as implemented; versions resolved by `pnpm add`, see ADR-010)**
+- Runtime: `react`, `react-dom`, `fastify`, `@fastify/websocket`, `@fastify/static` (serve built client), `zod`
+- Dev: `vite`, `@vitejs/plugin-react`, `typescript` (`~6.0`), `@types/react`, `@types/react-dom`, `@types/node` (`^24`), `@types/ws`, `vitest`, `eslint`, `@eslint/js`, `typescript-eslint`, `@playwright/test` (Chromium headless shell only)
+- Not needed: `tsx` (Node 24 runs TypeScript natively) and `concurrently` (`pnpm run --parallel`).
 
-**Estimated storage:** ~250–400 MB `node_modules` + Playwright Chromium (~150–400 MB; measure with `du -sh ~/.cache/ms-playwright`). All of this is in the Codespace; nothing goes on the Mac.
+**Measured storage:** `node_modules` 180 MB; Playwright headless shell ~287 MB in `~/.cache/ms-playwright`; `dist/` 380 KB. All of this is in the Codespace; nothing goes on the Mac.
 
 **Commands**
 ```bash
 git switch -c phase-1-foundation       # creates a branch (modifies git state, safe)
 pnpm install                           # installs dependencies (writes node_modules/)
-pnpm exec playwright install chromium  # downloads browser for smoke test (~150–400 MB)
+pnpm exec playwright install --with-deps --only-shell chromium  # headless shell for smoke tests (~290 MB)
 pnpm dev                               # client on :5173, server on 127.0.0.1:8787
 pnpm lint && pnpm test && pnpm build
 pnpm start                             # serves built client + API from one port
@@ -128,15 +129,15 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 ```
 
 **Acceptance criteria**
-- [ ] `pnpm dev` starts both; opening the forwarded port shows the app; status turns "Connected"
-- [ ] Typing a message shows the echo; sending invalid JSON returns an error message
-- [ ] Killing the server shows "Disconnected"; restarting reconnects automatically
-- [ ] `curl localhost:8787/healthz` → `{"status":"ok"}`
-- [ ] `pnpm build && pnpm start` serves the built client, and WS works on the single port
-- [ ] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally and in CI
-- [ ] CI uses the Node version from `.nvmrc` and the pnpm version from `packageManager`
-- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private
-- [ ] No API key referenced anywhere in `client/`; no credentials in any URL
+- [x] `pnpm dev` starts both; the app loads through the Vite port; status turns "Connected" (headless Chromium on `127.0.0.1:5173`, and owner tested via the forwarded Codespaces URL)
+- [x] Typing a message shows the echo; sending invalid JSON returns an error message
+- [x] Killing the server shows "Disconnected"; restarting reconnects automatically (~2.3 s after restart; owner confirmed in the Codespaces browser)
+- [x] `curl localhost:8787/healthz` → `{"status":"ok"}`
+- [x] `pnpm build && pnpm start` serves the built client, and WS works on the single port (Playwright smoke test)
+- [x] `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm test:e2e` pass locally and in CI
+- [x] CI uses the Node version from `.nvmrc` and the pnpm version from `packageManager`
+- [ ] Rebuilding the Codespace from `.devcontainer` works; only port 5173 is forwarded, and it is private (image, `sudo corepack enable`, and frozen install verified in Docker; a full Codespace rebuild is still to do)
+- [x] No API key referenced anywhere in `client/`; no credentials in any URL (CI greps `dist/client`)
 
 **Risks:** Codespaces port forwarding and WS through the Vite proxy — verify early. Over-scaffolding by Copilot — reject extra libraries. Devcontainer changes require a Codespace rebuild (a few minutes).
 
