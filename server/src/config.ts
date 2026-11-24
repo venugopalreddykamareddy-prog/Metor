@@ -1,5 +1,3 @@
-// Server configuration from environment variables. Phase 1: no secrets, no providers.
-
 export interface ServerConfig {
   host: string;
   port: number;
@@ -18,11 +16,7 @@ function parsePort(value: string | undefined, fallback: number): number {
   return port;
 }
 
-/**
- * Allowed browser origins for the WebSocket Origin check (defense in depth; not authentication).
- * Always includes the server's own origin and the local Vite dev origin. Inside GitHub Codespaces,
- * the private forwarded URLs for the dev port and the server port are added automatically.
- */
+/** Origins allowed to open /ws: local dev and own port, Codespaces forwarded URLs, plus ALLOWED_ORIGINS. */
 export function buildAllowedOrigins(env: NodeJS.ProcessEnv, port: number): Set<string> {
   const origins = new Set<string>();
   for (const p of new Set([port, DEV_CLIENT_PORT])) {
@@ -46,7 +40,7 @@ export function buildAllowedOrigins(env: NodeJS.ProcessEnv, port: number): Set<s
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const port = parsePort(env.PORT, 8787);
   return {
-    // Bind to loopback only. Codespaces port forwarding reaches loopback; nothing else should.
+    // Loopback only: Codespaces port forwarding still reaches it, nothing else on the network can.
     host: '127.0.0.1',
     port,
     production: env.NODE_ENV === 'production',

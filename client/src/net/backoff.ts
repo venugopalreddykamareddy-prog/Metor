@@ -1,13 +1,11 @@
-// Reconnect delay: exponential backoff with full jitter (ARCHITECTURE §6.3: 0.5 s → 8 s).
+// ARCHITECTURE §6.3: 0.5 s → 8 s.
 
 export const BACKOFF_BASE_MS = 500;
 export const BACKOFF_MAX_MS = 8000;
 
 /**
- * Delay before reconnect attempt `attempt` (0-based).
- * The ceiling doubles each attempt (500, 1000, 2000, 4000, 8000, 8000, …);
- * the returned delay is uniformly jittered between 50% and 100% of that ceiling.
- * @param random injectable for tests; must return a value in [0, 1).
+ * Delay before reconnect attempt `attempt` (0-based). The ceiling doubles each attempt up to 8 s,
+ * and the delay is a random 50–100% of it so many clients don't reconnect in lockstep.
  */
 export function backoffDelay(attempt: number, random: () => number = Math.random): number {
   const safeAttempt = Math.max(0, Math.floor(attempt));

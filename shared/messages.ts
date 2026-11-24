@@ -1,5 +1,4 @@
-// WebSocket message schemas shared by client and server (ARCHITECTURE §6.2).
-// Every message is JSON: { type, id, ts, ...payload }. Phase 1 only defines the echo protocol.
+// Message schemas for /ws (ARCHITECTURE §6.2). Phase 1 only has the echo protocol.
 import { z } from 'zod';
 
 export const MAX_TEXT_LENGTH = 2000;

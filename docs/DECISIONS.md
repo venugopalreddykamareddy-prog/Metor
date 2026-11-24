@@ -155,6 +155,7 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 - **Parallel dev scripts:** `pnpm run --parallel "/^dev:/"`, so **no `concurrently`**.
 - **Validation:** `zod` in `shared/messages.ts`, used by both client and server. One schema gives runtime validation and TypeScript types; it has no dependencies of its own. Fastify JSON Schema would cover only the server.
 - **TypeScript pinned to `~6.0`:** TypeScript 7 is `latest` on npm, but `typescript-eslint` 8.x supports `<6.1`. Revisit when it supports 7.
+- **`@types/ws` as a direct dev dependency:** `@fastify/websocket`'s type definitions import `ws` but don't ship its types. Code never imports `ws` directly; tests take the socket type from `@fastify/websocket`.
 - **Playwright:** Chromium **headless shell only** (`--only-shell`, ~280 MB), not full Chromium (~410 MB more).
 
 **Consequences:** Two fewer runtime tools to install and update. Server code cannot use enums, namespaces or parameter properties. TypeScript stays one major version behind until lint tooling catches up.

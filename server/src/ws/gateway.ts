@@ -1,4 +1,4 @@
-// WebSocket gateway: Origin check on upgrade, schema validation of every frame, echo reply.
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import {
@@ -11,18 +11,12 @@ export interface GatewayOptions {
   allowedOrigins: ReadonlySet<string>;
 }
 
-let counter = 0;
-function nextId(): string {
-  counter = (counter + 1) % Number.MAX_SAFE_INTEGER;
-  return `s${Date.now().toString(36)}${counter.toString(36)}`;
-}
-
 function send(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
 }
 
 function sendError(socket: WebSocket, code: ErrorCode, message: string): void {
-  send(socket, { type: 'error', id: nextId(), ts: Date.now(), code, message, retryable: false });
+  send(socket, { type: 'error', id: randomUUID(), ts: Date.now(), code, message, retryable: false });
 }
 
 export async function registerGateway(app: FastifyInstance, opts: GatewayOptions): Promise<void> {
@@ -30,7 +24,8 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
     '/ws',
     {
       websocket: true,
-      // Runs before the upgrade. Browsers always send Origin on WebSocket requests.
+      // Browsers always send Origin on WebSocket upgrades, so a missing one is rejected too.
+      // This blocks other websites from opening a socket; it is not authentication (Phase 2).
       preValidation: async (request, reply) => {
         const origin = request.headers.origin;
         if (!origin || !opts.allowedOrigins.has(origin)) {
@@ -47,7 +42,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
         }
         const parsed = parseClientMessage(data.toString());
         if (!parsed.ok) {
-          // Log only the validation error, never the message content.
+          // Log the validation error only, never message content.
           request.log.debug({ error: parsed.error }, 'invalid ws message');
           sendError(socket, 'bad_request', parsed.error.slice(0, 200));
           return;

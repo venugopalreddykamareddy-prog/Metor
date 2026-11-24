@@ -1,4 +1,4 @@
-// Builds the Fastify app. Kept separate from index.ts so tests can create it without listening.
+// Separate from index.ts so tests can build the app without listening on a port.
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';

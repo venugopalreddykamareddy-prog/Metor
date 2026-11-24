@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { WebSocket } from 'ws';
+import type { WebSocket } from '@fastify/websocket';
 import { MAX_PAYLOAD_BYTES } from '../../shared/messages.ts';
 import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
