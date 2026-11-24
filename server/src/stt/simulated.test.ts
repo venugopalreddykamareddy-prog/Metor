@@ -32,7 +32,7 @@ describe('simulated STT', () => {
     pushMs(MS_PER_WORD * 15); // the first line has 15 words
     expect(finals).toEqual([
       {
-        text: 'Can you walk me through how you would define an SLO for a payments API',
+        text: 'Can you walk me through how you would define an SLO for a payments API?',
         startMs: 0,
         endMs: MS_PER_WORD * 15,
       },

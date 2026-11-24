@@ -49,6 +49,8 @@ Pick the mode next to the Start button.
   4. Usage is recorded in `data/usage-ledger.json` (gitignored). Metor stops calling Groq at 80% of the published free-tier limits; a 429 from Groq pauses it until the reset time. It never switches to a paid service.
 - **Simulated** is always available and is what the automated tests use.
 
+The transcript has two views: **Clean** (readable sentences) and **Raw** (exactly what the recognizer returned). Hover a clean sentence to see the raw text. Use **Edit** to fix one sentence, or **Fix recognition errors** to add a "heard as → should be" rule. Rules are kept in this browser and apply to future recordings.
+
 To compare modes, use the **Accuracy check** panel under the transcript; the steps are in [STT_EVALUATION.md](STT_EVALUATION.md).
 
 ## Stop the Codespace

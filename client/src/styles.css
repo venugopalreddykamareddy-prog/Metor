@@ -235,3 +235,30 @@ button.link {
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
+
+.view-toggle {
+  display: inline-flex;
+  margin-left: auto;
+}
+.view-toggle button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+}
+.view-toggle button[aria-pressed='true'] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.transcript .question { font-weight: 600; }
+.edit-btn {
+  font-size: 0.75rem;
+  margin-left: 0.4rem;
+  opacity: 0.6;
+}
+.edit-btn:hover,
+.edit-btn:focus { opacity: 1; }
+.edit { display: flex; gap: 0.4rem; }
+.edit input { flex: 1; font: inherit; padding: 0.2rem; }
+.corrections { margin-top: 0.5rem; font-size: 0.875rem; }
+.corrections form { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.corrections input { font: inherit; padding: 0.3rem; flex: 1 1 10rem; }
+.corrections ul { padding-left: 1.2rem; }

@@ -16,18 +16,18 @@ The script has 10 sentences and 33 technical terms. It can be edited in the pane
 
 | Metric | Meaning |
 |---|---|
-| Word error rate | (substituted + missing + extra words) ÷ words in the script, after lowercasing and removing punctuation. Lower is better. |
-| Tech terms | How many of the script's technical terms (from `shared/vocabulary.ts`) appear in the transcript. |
+| Word error rate (raw / clean) | (substituted + missing + extra words) ÷ words in the script, after lowercasing and removing punctuation. Lower is better. Scored for the raw recognizer output and for the cleaned view. |
+| Tech terms (raw / clean) | How many of the script's technical terms (from `shared/vocabulary.ts`) appear in each view. The difference shows what the term fixes contribute. |
 | Final latency p50 | Groq: end of a speech segment → its text arriving. Browser speech: last interim result → final result. The two aren't the same measurement; Groq's also includes waiting for the pause that closes a segment. |
 
 ## Results
 
-No measured runs yet. They need a real voice and mic, which CI and the Codespace can't provide.
+Only the owner's first manual check so far; the accuracy script hasn't been run. Real runs need a real voice and mic, which CI and the Codespace can't provide.
 
-| Date | Mode | Browser / mic | Word error rate | Tech terms | Final latency p50 | Notes |
-|---|---|---|---|---|---|---|
-| | Browser speech | | | | | |
-| | Groq Whisper | | | | | |
+| Date | Mode | Browser / mic | WER raw | WER clean | Terms raw | Terms clean | Final latency p50 | Notes |
+|---|---|---|---|---|---|---|---|---|
+| 2026-11-24 | Browser speech | Chrome / owner's mic | — | — | — | — | 0.45 s (n=6) | Owner's first manual test: recognition works; fragmented, no capitals or punctuation. Accuracy script not run yet. |
+| | Groq Whisper | | | | | | | |
 
 ## Known behaviour to watch for
 

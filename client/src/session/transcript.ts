@@ -1,7 +1,8 @@
 import type { ServerMessage } from '../../../shared/messages.ts';
 
+/** Raw recognizer output, exactly as received. The cleaned view is derived from it (cleanTranscript.ts). */
 export type TranscriptLine =
-  | { kind: 'final'; key: string; finalSeq: number; text: string }
+  | { kind: 'final'; key: string; finalSeq: number; text: string; startMs: number; endMs: number }
   | { kind: 'gap'; key: string; seconds: number };
 
 export interface Transcript {
@@ -17,8 +18,6 @@ export type TranscriptMessage = Extract<
   { type: 'transcript.partial' | 'transcript.final' | 'transcript.gap' }
 >;
 
-const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-
 export function applyTranscript(state: Transcript, msg: TranscriptMessage): Transcript {
   switch (msg.type) {
     case 'transcript.partial':
@@ -26,16 +25,15 @@ export function applyTranscript(state: Transcript, msg: TranscriptMessage): Tran
     case 'transcript.final': {
       // Finals can be replayed after a reconnect; keep each one once.
       if (msg.finalSeq <= state.lastFinalSeq) return state;
-      // Recognizers sometimes repeat the last sentence after a restart.
-      const previous = state.lines.findLast((l) => l.kind === 'final');
-      if (previous?.kind === 'final' && normalize(previous.text) === normalize(msg.text)) {
-        return { ...state, partial: null, lastFinalSeq: msg.finalSeq };
-      }
-      return {
-        lines: [...state.lines, { kind: 'final', key: `f${msg.finalSeq}`, finalSeq: msg.finalSeq, text: msg.text }],
-        partial: null,
-        lastFinalSeq: msg.finalSeq,
+      const line: TranscriptLine = {
+        kind: 'final',
+        key: `f${msg.finalSeq}`,
+        finalSeq: msg.finalSeq,
+        text: msg.text,
+        startMs: msg.startMs,
+        endMs: msg.endMs,
       };
+      return { lines: [...state.lines, line], partial: null, lastFinalSeq: msg.finalSeq };
     }
     case 'transcript.gap':
       return {
@@ -55,6 +53,7 @@ export function clearTranscript(state: Transcript): Transcript {
   return { lines: [], partial: null, lastFinalSeq: state.lastFinalSeq };
 }
 
+/** The raw text, fragments joined with spaces. */
 export function transcriptText(state: Transcript): string {
   return state.lines.flatMap((l) => (l.kind === 'final' ? [l.text] : [])).join(' ');
 }

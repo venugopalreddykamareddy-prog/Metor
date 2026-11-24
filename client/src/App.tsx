@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchMe, logout, type Me } from './api.ts';
+import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTranscript.ts';
+import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
 import { useRecorder, type TranscriptionMode } from './session/useRecorder.ts';
 import { speechRecognitionCtor } from './stt/webspeech.ts';
@@ -57,7 +59,19 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const saved = savedMode();
   const [mode, setMode] = useState<TranscriptionMode>(saved && available.includes(saved) ? saved : 'simulated');
   const [askingConsent, setAskingConsent] = useState(false);
+  const corrections = useCorrections();
+  // Hand edits of single sentences, for the current recording only.
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
   const { phase, connection, latencies } = recorder;
+  const clean = useMemo(
+    () =>
+      buildCleanTranscript(recorder.transcript.lines, {
+        replacements: corrections.replacements,
+        overrides,
+        lastIsOpen: recorder.transcript.partial !== null,
+      }),
+    [recorder.transcript, corrections.replacements, overrides],
+  );
   const micOpen = phase === 'recording' || phase === 'paused';
   const activeMode = recorder.mode ?? mode;
   // Web Speech doesn't need the WebSocket; server modes do.
@@ -145,10 +159,23 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
 
       {recorder.error && <p role="alert" className="error">{recorder.error}</p>}
 
-      <TranscriptPane transcript={recorder.transcript} label={MODE_LABEL[activeMode]} onClear={recorder.clear} />
+      <TranscriptPane
+        transcript={recorder.transcript}
+        clean={clean}
+        label={MODE_LABEL[activeMode]}
+        replacements={corrections.replacements}
+        onClear={() => {
+          recorder.clear();
+          setOverrides({});
+        }}
+        onEditSentence={(key, text) => setOverrides((o) => ({ ...o, [key]: text }))}
+        onAddCorrection={corrections.add}
+        onRemoveCorrection={corrections.remove}
+      />
 
       <AccuracyCheck
-        transcript={transcriptText(recorder.transcript)}
+        rawText={transcriptText(recorder.transcript)}
+        cleanText={cleanTranscriptText(clean)}
         mode={MODE_LABEL[activeMode]}
         latencies={latencies}
       />
@@ -159,6 +186,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           onCancel={() => setAskingConsent(false)}
           onConfirm={() => {
             setAskingConsent(false);
+            setOverrides({});
             void recorder.start(mode);
           }}
         />

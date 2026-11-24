@@ -1,19 +1,24 @@
 // Technical vocabulary used three ways: as a spelling prompt for Groq Whisper, as boosted phrases
-// for Web Speech (where supported), and to fix common mishearings in final transcript text.
+// for Web Speech (where supported), and to fix known mishearings in the cleaned transcript.
+// Only exact, listed variants are replaced; unfamiliar words are never guessed into known terms.
 
 interface Term {
   /** How the term should be written. */
   canonical: string;
-  /** Other ways recognizers write it, matched case-insensitively as whole words. */
+  /** Known ways recognizers write it, matched case-insensitively as whole words. */
   heard?: string[];
+  /** Also an ordinary English word (helm, panorama): don't force its capitalization. */
+  common?: boolean;
 }
 
 const TERMS: Term[] = [
   // SRE / operations
   { canonical: 'SLO', heard: ['s l o', 's.l.o.'] },
-  { canonical: 'SLOs', heard: ['s l o s', 'slows'] },
-  { canonical: 'SLI', heard: ['s l i'] },
-  { canonical: 'SLA', heard: ['s l a'] },
+  { canonical: 'SLOs', heard: ['s l o s'] },
+  { canonical: 'SLI', heard: ['s l i', 's.l.i.'] },
+  { canonical: 'SLIs', heard: ['s l i s'] },
+  { canonical: 'SLA', heard: ['s l a', 's.l.a.'] },
+  { canonical: 'SLAs', heard: ['s l a s'] },
   { canonical: 'MTTR', heard: ['m t t r'] },
   { canonical: 'p99', heard: ['p 99', 'p ninety nine', 'pee 99'] },
   { canonical: 'p95', heard: ['p 95', 'p ninety five'] },
@@ -28,14 +33,14 @@ const TERMS: Term[] = [
   { canonical: 'OpenTelemetry', heard: ['open telemetry'] },
   { canonical: 'Splunk' },
   // Containers / Kubernetes / delivery
-  { canonical: 'Kubernetes', heard: ['cooper netties', 'kuber netties', 'kubernetis', 'cuber netes'] },
-  { canonical: 'kubectl', heard: ['cube cuddle', 'cube control', 'kube control', 'cube ctl', 'kube ctl', 'cubectl'] },
+  { canonical: 'Kubernetes', heard: ['cooper netties', 'kuber netties', 'kubernetis', 'kubernetties', 'cuber netes'] },
+  { canonical: 'kubectl', heard: ['cube cuddle', 'cube control', 'kube control', 'cube ctl', 'kube ctl', 'cubectl', 'kube cuddle'] },
   { canonical: 'k8s', heard: ['k eights', 'k 8 s'] },
   { canonical: 'kubelet', heard: ['cubelet', 'cube let'] },
-  { canonical: 'etcd', heard: ['et cd', 'etc d'] },
-  { canonical: 'Helm' },
+  { canonical: 'etcd', heard: ['et cd'] },
+  { canonical: 'Helm', common: true },
   { canonical: 'Argo CD', heard: ['argo cd', 'argocd', 'argo c d'] },
-  { canonical: 'Istio', heard: ['east io', 'is tio'] },
+  { canonical: 'Istio' },
   { canonical: 'Docker' },
   { canonical: 'Terraform', heard: ['terra form'] },
   { canonical: 'Ansible' },
@@ -68,12 +73,40 @@ const TERMS: Term[] = [
   { canonical: 'TCP/IP', heard: ['tcp ip'] },
   { canonical: 'TLS', heard: ['t l s'] },
   { canonical: 'Palo Alto', heard: ['palo alto'] },
-  { canonical: 'Panorama' },
+  { canonical: 'Panorama', common: true },
   { canonical: 'Zscaler', heard: ['z scaler', 'zee scaler'] },
-  { canonical: 'Fortinet', heard: ['fortinet', 'forty net'] },
+  { canonical: 'Fortinet' },
   { canonical: 'F5 BIG-IP', heard: ['f5 big ip', 'f 5 big ip'] },
   { canonical: 'Cisco ASA', heard: ['cisco a s a'] },
   { canonical: 'Wireshark', heard: ['wire shark'] },
+  // General infrastructure. Skips acronyms that clash with normal words or commands (cd, ha, dr).
+  { canonical: 'API' },
+  { canonical: 'APIs' },
+  { canonical: 'URL' },
+  { canonical: 'HTTP' },
+  { canonical: 'HTTPS' },
+  { canonical: 'REST', common: true },
+  { canonical: 'gRPC', heard: ['g rpc', 'grpc'] },
+  { canonical: 'JSON' },
+  { canonical: 'YAML' },
+  { canonical: 'CPU' },
+  { canonical: 'RAM', common: true },
+  { canonical: 'SQL' },
+  { canonical: 'VM' },
+  { canonical: 'VMs' },
+  { canonical: 'VPN' },
+  { canonical: 'CDN' },
+  { canonical: 'DDoS', heard: ['ddos', 'd dos'] },
+  { canonical: 'RCA', heard: ['r c a'] },
+  { canonical: 'RTO' },
+  { canonical: 'RPO' },
+  { canonical: 'SSH' },
+  { canonical: 'Linux' },
+  { canonical: 'PostgreSQL', heard: ['postgres sql', 'postgre sql'] },
+  { canonical: 'MySQL', heard: ['my sql'] },
+  { canonical: 'Redis' },
+  { canonical: 'Kafka' },
+  { canonical: 'NGINX', heard: ['engine x'] },
 ];
 
 function escapeRegex(text: string): string {
@@ -91,22 +124,47 @@ function phrasePattern(phrase: string): string {
 
 // Longest phrases first, so "Azure Front Door" wins over "Azure".
 const CORRECTIONS: [RegExp, string][] = TERMS.flatMap((term) =>
-  [term.canonical, ...(term.heard ?? [])].map((phrase): [string, string] => [phrase, term.canonical]),
+  [...(term.common ? [] : [term.canonical]), ...(term.heard ?? [])].map((phrase): [string, string] => [
+    phrase,
+    term.canonical,
+  ]),
 )
   .sort((a, b) => b[0].length - a[0].length)
   .map(([phrase, canonical]) => [new RegExp(`(?<![\\w/'’])${phrasePattern(phrase)}\\.?(?![\\w/])`, 'gi'), canonical]);
 
-/** Fixes known mishearings and the casing of technical terms in final transcript text. */
+// Mishearings that are also normal English, fixed only next to words that make the meaning clear.
+// "as your manager" stays; "as your front door" becomes "Azure Front Door".
+const AZURE_PRODUCTS =
+  'front door|key vault|functions?|devops|kubernetes service|monitor|active directory|ad|portal|subscriptions?|cosmos db|app service|blob storage|storage accounts?|virtual machines?|vms?|load balancers?|firewall|sql|event hubs?|service bus|aks|cloud';
+const CONTEXT_CORRECTIONS: [RegExp, (match: string, ...groups: string[]) => string][] = [
+  [new RegExp(`\\b(?:as your|as you're|azur)\\s+(${AZURE_PRODUCTS})\\b`, 'gi'), (_m, product) => `Azure ${product}`],
+  // "cube" alone is a normal word; "cube get pods" / "cube apply" is kubectl.
+  [/\b(?:cube|kube)\s+(get|apply|describe|delete|logs|exec|rollout|scale|port-forward|config)\b/gi, (_m, verb) => `kubectl ${verb}`],
+];
+
+/** Fixes known mishearings and the casing of technical terms. Unknown words are left alone. */
 export function correctTerms(text: string): string {
   let result = text;
+  for (const [pattern, fix] of CONTEXT_CORRECTIONS) result = result.replace(pattern, fix);
   for (const [pattern, canonical] of CORRECTIONS) result = result.replace(pattern, canonical);
   return result;
+}
+
+/** Replaces a user-supplied phrase (whole words, any case, flexible spacing) with its correction. */
+export function replacePhrase(text: string, heard: string, correct: string): string {
+  const pattern = phrasePattern(heard.trim());
+  if (!pattern) return text;
+  return text.replace(new RegExp(`(?<![\\w/'’])${pattern}(?![\\w/])`, 'gi'), correct);
 }
 
 /** All canonical terms, e.g. for the accuracy check's term recall. */
 export const TECH_TERMS: readonly string[] = TERMS.map((t) => t.canonical);
 
-/** Short spelling hint for Whisper (Groq limits prompts to 224 tokens; this is well under). */
-export const WHISPER_PROMPT = `Technical interview about SRE, cloud and networking: ${TERMS.slice(0, 70)
-  .map((t) => t.canonical)
-  .join(', ')}.`;
+// Hand-picked spelling hints for Whisper, a few per domain. Groq allows 224 tokens, so keep it short.
+const WHISPER_TERMS = [
+  'SLI', 'SLO', 'SLA', 'error budget', 'p99', 'MTTR', 'postmortem', 'PagerDuty', 'Datadog', 'Prometheus', 'Grafana',
+  'Kubernetes', 'kubectl', 'kubelet', 'etcd', 'Helm', 'Argo CD', 'Terraform', 'Ansible', 'CI/CD',
+  'AWS', 'EKS', 'EC2', 'IAM', 'VPC', 'Route 53', 'Azure', 'AKS', 'Azure Front Door', 'Key Vault', 'Cosmos DB',
+  'BGP', 'OSPF', 'EIGRP', 'MPLS', 'SD-WAN', 'DNS', 'TLS', 'Palo Alto', 'Zscaler', 'F5 BIG-IP', 'Wireshark',
+];
+export const WHISPER_PROMPT = `Technical interview about SRE, cloud and networking: ${WHISPER_TERMS.join(', ')}.`;

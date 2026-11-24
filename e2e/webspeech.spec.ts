@@ -76,7 +76,7 @@ async function startBrowserSpeech(page: Page) {
   await expect(page.getByTestId('recording-indicator')).toContainText('REC');
 }
 
-const finals = (page: Page) => page.getByTestId('transcript').locator('li.final');
+const sentences = (page: Page) => page.getByTestId('transcript').locator('li.final');
 
 test('offers simulated and browser speech, but not Groq without a key', async ({ page }) => {
   await page.goto('/');
@@ -85,26 +85,37 @@ test('offers simulated and browser speech, but not Groq without a key', async ({
   await expect(page.getByLabel('Transcription').locator('option')).toHaveText(['Simulated', 'Browser speech']);
 });
 
-test('shows the words spoken, fixes technical terms, and survives browser restarts', async ({ page }) => {
+test('shows the words spoken: raw as heard, clean as readable sentences', async ({ page }) => {
   await startBrowserSpeech(page);
   await expect(page.getByTestId('audio-debug')).toContainText('nothing is sent to the Metor server');
   // Recognition runs on Metor's own mic track, so Stop really turns the mic off.
   expect(await fake(page, (r) => r.track?.kind === 'audio' && r.track.readyState === 'live')).toBe(true);
-  expect(await fake(page, (r) => r.starts)).toBe(1);
 
-  await fake(page, (r) => r.emit('run cube cuddle', false));
-  await expect(page.getByTestId('partial')).toHaveText('run cube cuddle');
-  await fake(page, (r) => r.emit('run cube cuddle get pods on a k s', true));
-  await expect(finals(page)).toHaveText(['run kubectl get pods on AKS']);
-  await expect(page.getByTestId('partial')).toHaveCount(0);
+  await fake(page, (r) => r.emit('how would you', false));
+  await expect(page.getByTestId('partial')).toHaveText('how would you');
+  await fake(page, (r) => r.emit('how would you', true));
+  await fake(page, (r) => r.emit('um define an s l o', true)); // short pause: same sentence
+  await expect(sentences(page)).toHaveText([/^How would you define an SLO\?/]);
 
-  // Chrome ends recognition after silence; Metor restarts it. A repeated final isn't shown twice.
+  await page.waitForTimeout(1500); // long pause: new sentence
+  await fake(page, (r) => r.emit('we run cube cuddle on a k s', true));
+  await expect(sentences(page)).toHaveText([/^How would you define an SLO\?/, /^We run kubectl on AKS\./]);
+
+  // Chrome ends recognition after silence; Metor restarts it. The repeated fragment stays in raw only.
   await fake(page, (r) => r.end());
   await expect.poll(() => fake(page, (r) => r.starts)).toBe(2);
-  await fake(page, (r) => r.emit('Run kubectl get pods on AKS.', true));
-  await fake(page, (r) => r.emit('check b g p peers', true));
-  await expect(finals(page)).toHaveText(['run kubectl get pods on AKS', 'check BGP peers']);
+  await fake(page, (r) => r.emit('we run cube cuddle on a k s', true));
+  await expect(sentences(page)).toHaveCount(2);
   await expect(page.getByTestId('audio-debug')).toContainText('final latency p50');
+
+  await page.getByRole('button', { name: 'Raw' }).click();
+  await expect(sentences(page)).toHaveText([
+    'how would you',
+    'um define an s l o',
+    'we run cube cuddle on a k s',
+    'we run cube cuddle on a k s',
+  ]);
+  await page.getByRole('button', { name: 'Clean' }).click();
 
   await page.getByRole('button', { name: 'Pause' }).click();
   await expect.poll(() => fake(page, (r) => r.stops)).toBe(1);
@@ -114,10 +125,35 @@ test('shows the words spoken, fixes technical terms, and survives browser restar
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.getByTestId('recording-indicator')).toBeHidden();
   expect(await liveTrackCount(page)).toBe(0);
-  await expect(finals(page)).toHaveCount(2);
+  await expect(sentences(page)).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Clear transcript' }).click();
-  await expect(finals(page)).toHaveCount(0);
+  await expect(sentences(page)).toHaveCount(0);
+});
+
+test('the user can fix misheard words and edit a sentence; raw stays as heard', async ({ page }) => {
+  await startBrowserSpeech(page);
+  await fake(page, (r) => r.emit('we put cloud flair in front of the api', true));
+  await expect(sentences(page)).toHaveText([/^We put cloud flair in front of the API\./]);
+
+  await page.getByText('Fix recognition errors').click();
+  await page.getByLabel('Heard as').fill('cloud flair');
+  await page.getByLabel('Should be').fill('Cloudflare');
+  await page.getByRole('button', { name: 'Add' }).click();
+  await expect(sentences(page)).toHaveText([/^We put Cloudflare in front of the API\./]);
+
+  await page.getByRole('button', { name: /^Edit: We put Cloudflare/ }).click();
+  await page.getByLabel('Edit sentence').fill('We put Cloudflare in front of the public API.');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(sentences(page)).toHaveText([/^We put Cloudflare in front of the public API\. \(edited\)/]);
+
+  await page.getByRole('button', { name: 'Raw' }).click();
+  await expect(sentences(page)).toHaveText(['we put cloud flair in front of the api']);
+
+  // Corrections are remembered for the next recording.
+  await page.reload();
+  await page.getByText('Fix recognition errors (1)').click();
+  await expect(page.getByText('“cloud flair” → “Cloudflare”')).toBeVisible();
 });
 
 test('a fatal speech error stops recording and releases the mic', async ({ page }) => {
@@ -130,10 +166,11 @@ test('a fatal speech error stops recording and releases the mic', async ({ page 
 
 test('keeps the newest line in view unless the user scrolls up', async ({ page }) => {
   await startBrowserSpeech(page);
+  await page.getByRole('button', { name: 'Raw' }).click(); // one line per fragment
   const scroller = page.getByTestId('transcript-scroll');
   const atBottom = () => scroller.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 5);
   for (let i = 0; i < 40; i++) await fake(page, (r) => r.emit(`line number ${Math.random()}`, true));
-  await expect(finals(page)).toHaveCount(40);
+  await expect(sentences(page)).toHaveCount(40);
   expect(await atBottom()).toBe(true);
 
   await scroller.evaluate((el) => {
@@ -141,21 +178,18 @@ test('keeps the newest line in view unless the user scrolls up', async ({ page }
     el.dispatchEvent(new Event('scroll'));
   });
   await fake(page, (r) => r.emit('one more line', true));
-  await expect(finals(page)).toHaveCount(41);
+  await expect(sentences(page)).toHaveCount(41);
   expect(await atBottom()).toBe(false);
 });
 
 test('scores a transcript against the accuracy script', async ({ page }) => {
   await startBrowserSpeech(page);
-  await fake(page, (r) =>
-    r.emit('How would you define an SLO and an error budget for a payments API', true),
-  );
+  await fake(page, (r) => r.emit('how would you define an s l o and an error budget for a payments api', true));
   await page.getByRole('button', { name: 'Stop' }).click();
   await page.getByText('Accuracy check').click();
   await page.getByLabel('Reference text').fill('How would you define an SLO and an error budget for a payments API?');
   await page.getByRole('button', { name: 'Score transcript' }).click();
   const row = page.getByTestId('accuracy-results').locator('tbody tr').first();
-  await expect(row).toContainText('Browser speech');
-  await expect(row).toContainText('0.0%');
-  await expect(row).toContainText('2/2'); // SLO, error budget
+  // Raw "s l o" counts as three wrong words and a missed term; the clean view fixes both.
+  await expect(row.locator('td')).toHaveText(['Browser speech', '21.4%', '0.0%', '2/3', '3/3', /s$/, '—']);
 });

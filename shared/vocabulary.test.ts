@@ -17,6 +17,28 @@ describe('correctTerms', () => {
     expect(correctTerms(heard)).toBe(expected);
   });
 
+  it.each([
+    ['we run on as your front door and as your key vault', 'we run on Azure Front Door and Azure Key Vault'],
+    ['I reported as your manager asked', 'I reported as your manager asked'],
+    ['cube get pods in the namespace', 'kubectl get pods in the namespace'],
+    ['a cube of ice', 'a cube of ice'],
+    ['define s l i s and s l a s', 'define SLIs and SLAs'],
+    ['sli slo and sla', 'SLI SLO and SLA'],
+  ])('uses context for ambiguous phrases: %s', (heard, expected) => {
+    expect(correctTerms(heard)).toBe(expected);
+  });
+
+  it('never guesses unfamiliar terms into known ones', () => {
+    for (const text of [
+      'we use Kubeflux and Terraformer for that',
+      'the service slows down under load',
+      'he took the helm of the panorama project',
+      'our Datadogger tool and the BGPX protocol',
+    ]) {
+      expect(correctTerms(text)).toBe(text);
+    }
+  });
+
   it('leaves ordinary words alone', () => {
     const text = 'The slow service was a simple dns-free test of ideas, and I am on call tonight.';
     expect(correctTerms(text)).toBe('The slow service was a simple DNS-free test of ideas, and I am on-call tonight.');
@@ -37,8 +59,8 @@ describe('correctTerms', () => {
 });
 
 describe('WHISPER_PROMPT', () => {
-  it('stays short (Groq allows 224 tokens; ~4 chars per token)', () => {
-    expect(WHISPER_PROMPT.length).toBeLessThan(224 * 3);
-    expect(WHISPER_PROMPT).toContain('kubectl');
+  it('stays well under Groq\'s 224-token limit and covers the core domains', () => {
+    expect(WHISPER_PROMPT.length).toBeLessThanOrEqual(451);
+    for (const term of ['kubectl', 'Kubernetes', 'SLO', 'Terraform', 'Azure', 'BGP', 'OSPF']) expect(WHISPER_PROMPT).toContain(term);
   });
 });

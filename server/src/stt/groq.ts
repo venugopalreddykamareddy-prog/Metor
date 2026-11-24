@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { FRAME_MS } from '../../../shared/audio.ts';
 import { levelDb } from '../../../shared/messages.ts';
-import { WHISPER_PROMPT, correctTerms } from '../../../shared/vocabulary.ts';
+import { WHISPER_PROMPT } from '../../../shared/vocabulary.ts';
 import type { UsageLedger } from '../limits/usageLedger.ts';
 import type { SttFactory, SttStream, TranscriptSink } from './types.ts';
 import { encodeWav } from './wav.ts';
@@ -145,7 +145,8 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
       const parts = body.segments
         ? body.segments.filter((s) => (s.no_speech_prob ?? 0) < MAX_NO_SPEECH_PROB).map((s) => s.text)
         : [body.text ?? ''];
-      let text = correctTerms(parts.join(' ').replace(/\s+/g, ' ').trim());
+      // Raw Whisper text; term fixes and cleanup happen in the client's cleaned view.
+      let text = parts.join(' ').replace(/\s+/g, ' ').trim();
       if (segment.speechMs < 1500 && HALLUCINATIONS.test(text)) text = '';
       // The request limit header shows which plan's limits the account really has.
       const planRequestsPerDay = res.headers.get('x-ratelimit-limit-requests');

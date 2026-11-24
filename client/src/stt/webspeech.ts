@@ -1,4 +1,4 @@
-import { TECH_TERMS, correctTerms } from '../../../shared/vocabulary.ts';
+import { TECH_TERMS } from '../../../shared/vocabulary.ts';
 
 // TypeScript's DOM lib doesn't include speech recognition; these cover what Metor uses.
 interface RecognitionAlternative {
@@ -36,8 +36,11 @@ export function speechRecognitionCtor(): RecognitionCtor | undefined {
 
 export interface WebSpeechHandlers {
   onPartial(text: string): void;
-  /** `delayMs`: time from the last interim result to this final. */
-  onFinal(text: string, delayMs: number): void;
+  /**
+   * Raw final text. `startedAt`: when the first interim result for it arrived (≈ speech start);
+   * `delayMs`: time from the last interim result to this final.
+   */
+  onFinal(text: string, startedAt: number, delayMs: number): void;
   /** Fatal errors stop recognition; the caller should release the mic. */
   onFatal(message: string): void;
 }
@@ -79,6 +82,7 @@ export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandl
   let networkErrors = 0;
   let restarts: number[] = [];
   let lastInterimAt = Date.now();
+  let fragmentStartedAt: number | null = null;
 
   const fail = (message: string) => {
     if (stopped) return;
@@ -105,8 +109,10 @@ export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandl
       const result = event.results[i];
       const text = result?.[0]?.transcript ?? '';
       if (result?.isFinal) {
-        const final = correctTerms(text.trim());
-        if (final) handlers.onFinal(final, Date.now() - lastInterimAt);
+        const final = text.trim();
+        const now = Date.now();
+        if (final) handlers.onFinal(final, fragmentStartedAt ?? now, now - lastInterimAt);
+        fragmentStartedAt = null;
       } else {
         interim += text;
       }
@@ -114,6 +120,7 @@ export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandl
     networkErrors = 0;
     if (interim.trim()) {
       lastInterimAt = Date.now();
+      fragmentStartedAt ??= lastInterimAt;
       handlers.onPartial(interim.trim());
     }
   };

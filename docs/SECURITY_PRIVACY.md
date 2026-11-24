@@ -23,6 +23,7 @@ I won't merge features that weaken these controls.
 | Transcripts | High (may include third parties' speech) | Browser memory; IndexedDB **only after the user opts in** | **Not persisted by default.** Opt-in retention: 7 / 30 / 90 days |
 | Resumes, JDs, stories | High (PII) | Browser IndexedDB (explicit user upload) | Until user deletes |
 | AI answers | Medium | Same as transcripts | Same as transcripts |
+| Word corrections ("heard as → should be") | Low | Browser `localStorage` | Until removed in the UI |
 | API keys (`GROQ_API_KEY`, `GEMINI_API_KEY`) | Critical | Server env vars / Codespaces secrets only | — |
 | Auth passphrase | Critical | Server env var, stored as a scrypt hash only | — |
 | Spend ledger | Low (counts, quota units, and cost estimates only) | Server file `data/spend-ledger.json` (gitignored) | 90 days of daily totals |

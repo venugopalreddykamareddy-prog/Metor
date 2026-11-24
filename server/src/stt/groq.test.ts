@@ -61,7 +61,7 @@ function setup(opts: { respond?: (call: Call) => Response | Promise<Response>; l
 }
 
 describe('Groq STT', () => {
-  it('uploads a WAV with model, language, prompt and verbose_json, and corrects terms', async () => {
+  it('uploads a WAV with model, language, prompt and verbose_json, and returns raw text', async () => {
     const t = setup();
     t.feed(tone, 2000);
     t.feed(silence, 1500); // a short answer closes after a 1.5 s pause
@@ -78,7 +78,7 @@ describe('Groq STT', () => {
     // 300 ms pre-roll is only kept when it exists; here speech starts at once: 3.5 s of audio.
     expect(file.size).toBe(44 + 35 * FRAME_SAMPLES * 2);
     expect(t.events[0]).toEqual({ type: 'partial', text: '…' });
-    expect(t.finals()).toEqual(['run kubectl get pods']);
+    expect(t.finals()).toEqual(['run cube cuddle get pods']); // raw; cleaned on the client
     expect(t.events.find((e) => e.type === 'final')?.latencyMs).toBeTypeOf('number');
   });
 

@@ -3,10 +3,10 @@ import type { SttFactory, SttStream, TranscriptSink } from './types.ts';
 
 // Canned interview-style lines. The text never depends on the audio content.
 const SCRIPT = [
-  'Can you walk me through how you would define an SLO for a payments API',
-  'What would you check first if latency doubled after a deploy',
-  'Tell me about a time you handled a difficult incident',
-  'How does BGP choose the best path between two routes',
+  'Can you walk me through how you would define an SLO for a payments API?',
+  'What would you check first if latency doubled after a deploy?',
+  'Tell me about a time you handled a difficult incident.',
+  'How does BGP choose the best path between two routes?',
 ];
 
 /** Adds one word per this much received audio. */

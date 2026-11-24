@@ -214,11 +214,12 @@ export function useRecorder(onAuthEnded: () => void) {
       throw new Error('no audio track');
     }
     let finalSeq = lastFinalSeqRef.current;
+    const recordingStart = Date.now();
     let speech: WebSpeech;
     try {
       speech = startWebSpeech(track, {
         onPartial: (text) => applyMessage({ type: 'transcript.partial', id: '', ts: Date.now(), segmentId: 'web', text }),
-        onFinal: (text, delayMs) =>
+        onFinal: (text, startedAt, delayMs) =>
           applyMessage({
             type: 'transcript.final',
             id: '',
@@ -226,8 +227,9 @@ export function useRecorder(onAuthEnded: () => void) {
             segmentId: 'web',
             finalSeq: ++finalSeq,
             text,
-            startMs: 0,
-            endMs: 0,
+            // Times on the recording's own clock, so the cleaned view can measure pauses.
+            startMs: Math.max(0, startedAt - recordingStart),
+            endMs: Date.now() - recordingStart,
             latencyMs: delayMs,
           }),
         onFatal: (message) => {

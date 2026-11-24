@@ -308,7 +308,8 @@ describe('recording', () => {
       for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, tone)));
       for (let i = 0; i < 15; i++) conn.ws.send(Buffer.from(encodeAudioFrame(seq++, silence)));
       const final = await conn.waitFor((m) => m.type === 'transcript.final');
-      expect(final).toMatchObject({ text: 'check BGP on the router', finalSeq: 1, latencyMs: expect.any(Number) });
+      // Raw Whisper text; the client's cleaned view turns "b g p" into BGP.
+      expect(final).toMatchObject({ text: 'check b g p on the router', finalSeq: 1, latencyMs: expect.any(Number) });
       expect(uploads).toHaveLength(1);
 
       // 45 frames in total stays under the rate limiter's 60-frame burst; the 4 s limit hits at frame 40.

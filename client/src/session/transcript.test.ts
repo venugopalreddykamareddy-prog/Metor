@@ -12,7 +12,7 @@ describe('applyTranscript', () => {
     expect(t.partial).toBe('how does');
     t = applyTranscript(t, final(1, 'how does BGP work'));
     expect(t.partial).toBeNull();
-    expect(t.lines).toEqual([{ kind: 'final', key: 'f1', finalSeq: 1, text: 'how does BGP work' }]);
+    expect(t.lines).toEqual([{ kind: 'final', key: 'f1', finalSeq: 1, text: 'how does BGP work', startMs: 0, endMs: 100 }]);
   });
 
   it('ignores finals replayed after a reconnect', () => {
@@ -35,12 +35,10 @@ describe('applyTranscript', () => {
     expect(t.lines).toHaveLength(1);
   });
 
-  it('skips a final that repeats the previous one', () => {
-    let t = applyTranscript(emptyTranscript, final(1, 'Run kubectl get pods.'));
+  it('keeps repeated fragments in the raw transcript (the cleaned view drops them)', () => {
+    let t = applyTranscript(emptyTranscript, final(1, 'run kubectl get pods'));
     t = applyTranscript(t, final(2, 'run kubectl get pods'));
-    t = applyTranscript(t, final(3, 'Then check the logs.'));
-    expect(transcriptText(t)).toBe('Run kubectl get pods. Then check the logs.');
-    expect(t.lastFinalSeq).toBe(3);
+    expect(transcriptText(t)).toBe('run kubectl get pods run kubectl get pods');
   });
 
   it('treats an empty partial as no partial', () => {
