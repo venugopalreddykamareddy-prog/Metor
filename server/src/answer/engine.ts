@@ -35,8 +35,8 @@ export interface AnswerDeps {
   ledger: UsageLedger | null;
   maxAnswers: number;
   log: FastifyBaseLogger;
-  /** Completion-token budget per answer length (default MAX_COMPLETION_TOKENS). */
-  maxTokens?: Record<AnswerLength, number>;
+  /** Completion-token budgets per engine and length (default MAX_COMPLETION_TOKENS). */
+  maxTokens?: Partial<Record<AnswerEngine, Record<AnswerLength, number>>>;
   stats?: AnswerStats;
 }
 
@@ -83,7 +83,7 @@ export class AnswerSession {
     if (this.answered >= this.deps.maxAnswers) return fail('limit_reached', 'Answer limit for this session reached.');
 
     const messages = buildMessages(req);
-    const maxTokens = (this.deps.maxTokens ?? MAX_COMPLETION_TOKENS)[req.length];
+    const maxTokens = (this.deps.maxTokens?.[req.engine] ?? MAX_COMPLETION_TOKENS)[req.length];
     const reserved = estimateTokens(messages) + maxTokens;
     const usesQuota = req.engine !== 'simulated';
     let ticket: number | null = null;

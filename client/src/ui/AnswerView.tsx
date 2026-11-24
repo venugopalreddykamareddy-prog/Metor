@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Assessment } from '../../../shared/answerFormat.ts';
 import { findExperienceClaims } from '../../../shared/experienceClaims.ts';
+import { unverifiedSpecifics } from '../../../shared/unverifiedSpecifics.ts';
 import type { AnswerGroup } from '../answers/grouping.ts';
 import type { AnswerCard } from '../answers/useAnswers.ts';
 import type { AnswerDisplay } from '../settings.ts';
@@ -91,6 +92,8 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
   const streaming = card.status === 'streaming';
   // A local safety net for hard rule 3: the prompt forbids invented experience, this catches slips.
   const claims = findExperienceClaims(card.text);
+  // Specific settings or commands named next to an unfamiliar term may be invented.
+  const specifics = card.header?.assessment === 'unrecognized_term' && !streaming ? unverifiedSpecifics(card.text) : [];
 
   // Small talk that got past the local checks: no answer card, just a line (FR-E5).
   if (card.header?.assessment === 'off_topic' && !showSmallTalk) {
@@ -140,6 +143,11 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
         <div className="assessment experience-warning" role="note" data-testid="experience-warning">
           <strong>Claims experience you haven't verified</strong> · No resume or verified experience is loaded, so don't say this as fact: “
           {claims[0]}”
+        </div>
+      )}
+      {specifics.length > 0 && (
+        <div className="assessment experience-warning" role="note" data-testid="unverified-specifics">
+          <strong>Unverified specifics</strong> · The term wasn't recognized, so these may not exist. Check before saying them: {specifics.join(', ')}
         </div>
       )}
       <div className="answer-text" data-testid="answer-text" style={answerTextStyle(display)}>

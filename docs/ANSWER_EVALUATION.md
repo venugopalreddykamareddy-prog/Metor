@@ -112,6 +112,8 @@ Provider-reported tokens per answer (Groq `usage`; the reasoning split is report
 
 For trick-heavy practice, "Regenerate with 120B" or `ANSWER_REASONING_EFFORT=medium` with `ANSWER_MAX_TOKENS=1000,1400,2200` restores the stronger premise checking: about 1.3K tokens per answer instead of 1.0K. Medium reasoning with the 256/512 budgets risks empty or cut-off answers.
 
+**Update (same day):** the owner chose 120B with medium reasoning as the default again (about 1.3K tokens per answer on set B, the third row above), with 20B-low as a fast mode. The prompt then got stronger premise and unknown-term rules, and its examples were replaced: earlier versions quoted evaluation questions ("kubectl rewind", "Istio Hyperdrive mode", "UDP guarantees in-order delivery", "cube cuddle"), which inflated those results. **The new prompt has not been run against Groq** (no live tokens without approval). Re-run set B before relying on these numbers.
+
 ### Still to do
 
 - The rest of the set (85 questions: unusual_real, misheard, irrelevant, experience_trap, follow_up, behavioral, and the remaining items in the other categories), over two days of free budget.

@@ -85,9 +85,9 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     await Promise.all([sttLedger.load(), chatLedger.load()]);
     groq = createGroqStt({ ...config.groq, ledger: sttLedger, log: app.log, ...fetchOpt });
     const { apiKey } = config.groq;
-    const reasoningEffort = config.answerReasoningEffort;
-    answerProviders['groq-120b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-120b', log: app.log, reasoningEffort, ...fetchOpt });
-    answerProviders['groq-20b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-20b', log: app.log, reasoningEffort, ...fetchOpt });
+    const { answerModels: m } = config;
+    answerProviders['groq-120b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-120b', log: app.log, reasoningEffort: m['groq-120b'].effort, ...fetchOpt });
+    answerProviders['groq-20b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-20b', log: app.log, reasoningEffort: m['groq-20b'].effort, ...fetchOpt });
     const ledgers = [sttLedger, chatLedger];
     app.addHook('onClose', () => Promise.all(ledgers.map((l) => l.flush())).then(() => undefined));
   }
@@ -125,7 +125,7 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
       ledger: chatLedger,
       maxAnswers: config.maxAnswersPerSession,
       log: app.log,
-      maxTokens: config.answerMaxTokens,
+      maxTokens: { 'groq-120b': config.answerModels['groq-120b'].maxTokens, 'groq-20b': config.answerModels['groq-20b'].maxTokens },
       stats: answerStats,
     },
   });

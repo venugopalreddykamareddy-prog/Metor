@@ -70,6 +70,16 @@ describe('buildAllowedOrigins', () => {
 });
 
 describe('answer token budgets', () => {
+  it('defaults to 120B with medium reasoning and room for it, and 20B fast mode with low reasoning', async () => {
+    const config = loadConfig({ APP_PASSPHRASE_HASH: await hashPassphrase('x') });
+    expect(config.answerModels).toEqual({
+      'groq-120b': { effort: 'medium', maxTokens: { short: 1000, standard: 1400, detailed: 2200 } },
+      'groq-20b': { effort: 'low', maxTokens: { short: 256, standard: 512, detailed: 1024 } },
+    });
+    const custom = loadConfig({ APP_PASSPHRASE_HASH: await hashPassphrase('x'), ANSWER_REASONING_EFFORT: 'high', ANSWER_MAX_TOKENS: '1200,1600,2600' });
+    expect(custom.answerModels['groq-120b']).toEqual({ effort: 'high', maxTokens: { short: 1200, standard: 1600, detailed: 2600 } });
+  });
+
   it('defaults to 256, 512 and 1024 and accepts an override', () => {
     expect(parseAnswerMaxTokens(undefined)).toEqual({ short: 256, standard: 512, detailed: 1024 });
     expect(parseAnswerMaxTokens('300, 600, 1200')).toEqual({ short: 300, standard: 600, detailed: 1200 });

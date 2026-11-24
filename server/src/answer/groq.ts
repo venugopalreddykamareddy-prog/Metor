@@ -22,7 +22,7 @@ export function createGroqAnswer(opts: {
   model: string;
   log: FastifyBaseLogger;
   fetch?: typeof fetch;
-  /** GPT-OSS reasoning effort (default low; ANSWER_REASONING_EFFORT, ADR-014). */
+  /** GPT-OSS reasoning effort (default medium; set per model in config, ADR-014). */
   reasoningEffort?: 'low' | 'medium' | 'high';
 }): AnswerProvider {
   const doFetch = opts.fetch ?? fetch;
@@ -39,7 +39,7 @@ export function createGroqAnswer(opts: {
           temperature: 0.4,
           max_completion_tokens: maxTokens,
           // GPT-OSS models reason before answering (hidden; not needed in the answer).
-          reasoning_effort: opts.reasoningEffort ?? 'low',
+          reasoning_effort: opts.reasoningEffort ?? 'medium',
           include_reasoning: false,
         }),
         signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),

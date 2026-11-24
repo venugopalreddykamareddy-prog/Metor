@@ -45,8 +45,8 @@ const MODE_LABEL: Record<TranscriptionMode, string> = {
 };
 const ENGINE_LABEL: Record<AnswerEngine, string> = {
   simulated: 'Simulated (not AI)',
-  'groq-120b': 'Groq GPT-OSS 120B (harder questions)',
-  'groq-20b': 'Groq GPT-OSS 20B',
+  'groq-120b': 'Groq GPT-OSS 120B',
+  'groq-20b': 'Groq GPT-OSS 20B (fast mode)',
 };
 
 function median(values: number[]): number {
@@ -65,10 +65,10 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
     ...(speechRecognitionCtor() ? (['webspeech'] as const) : []),
     ...(me.providers.groq ? (['groq'] as const) : []),
   ];
-  // GPT-OSS 20B is the default (fewer tokens); 120B is there for harder questions.
-  const engines: AnswerEngine[] = me.providers.groq ? ['groq-20b', 'groq-120b', 'simulated'] : ['simulated'];
+  // GPT-OSS 120B (medium reasoning) is the default for accuracy; 20B is the optional fast mode.
+  const engines: AnswerEngine[] = me.providers.groq ? ['groq-120b', 'groq-20b', 'simulated'] : ['simulated'];
   const [mode, setMode] = useSetting<TranscriptionMode>('mode', available, 'simulated');
-  const [engine, setEngine] = useSetting<AnswerEngine>('answerEngine', engines, engines[0] ?? 'simulated');
+  const [engine, setEngine] = useSetting<AnswerEngine>('answerModel', engines, engines[0] ?? 'simulated');
   const [length, setLength] = useSetting<AnswerLength>('length', ['short', 'standard', 'detailed'], 'standard');
   const [autoAnswer, setAutoAnswer] = useSetting<'on' | 'off'>('autoAnswer', ['on', 'off'], 'on');
   const [autoScroll, setAutoScroll] = useState(true);

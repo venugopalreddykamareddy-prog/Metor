@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildMessages, estimateTokens, type AnswerRequest } from './prompt.ts';
 
@@ -19,7 +20,7 @@ const system = buildMessages(base)[0]?.content ?? '';
 
 describe('buildMessages', () => {
   it('asks for the header format and the validation and style rules', () => {
-    for (const phrase of ['ASSESSMENT:', 'CLARIFY:', 'ANSWER:', 'do I specifically know this exists', 'Never describe what it does', 'Never claim you checked documentation', 'No verified resume or experience', 'first person']) {
+    for (const phrase of ['ASSESSMENT:', 'CLARIFY:', 'ANSWER:', 'do I specifically know this exists', 'Never describe it', 'Never claim you checked documentation', 'No verified resume or experience', 'first person']) {
       expect(system).toContain(phrase);
     }
   });
@@ -32,15 +33,32 @@ describe('buildMessages', () => {
 
   it('forbids claimed experience in every answer and keeps every validation label', () => {
     expect(system).toContain('In every answer, say what you would do');
-    expect(system).toContain("what's your experience with X");
+    expect(system).toContain("questions about the candidate's experience with a technology");
     for (const label of ['incorrect_premise', 'unrecognized_term', 'possible_transcription_error', 'clarification_needed', 'unrealistic_requirement', 'insufficient_information', 'unverified_experience', 'off_topic']) {
       expect(system).toContain(`${label}`);
     }
     expect(system).toContain('If NOTE names a problem, ASSESSMENT must not be none.');
   });
 
+  it('never builds on a wrong premise or offers invented settings for an unknown term', () => {
+    expect(system).toContain('never build the answer on the wrong claim');
+    expect(system).toContain('never offer settings, flags, commands, config keys or values as substitutes');
+    expect(system).toContain('two related terms swapped');
+  });
+
+  it('uses no wording from the evaluation sets, so scores are not inflated', () => {
+    const prompt = system.toLowerCase();
+    for (const file of ['answer-questions.json', 'holdout-questions.json']) {
+      const { questions } = JSON.parse(readFileSync(new URL(`../../../eval/${file}`, import.meta.url), 'utf8')) as { questions: { question: string }[] };
+      for (const { question } of questions) {
+        const words = question.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
+        for (let i = 0; i + 4 <= words.length; i++) expect(prompt, question).not.toContain(words.slice(i, i + 4).join(' '));
+      }
+    }
+  });
+
   it('keeps the system prompt concise', () => {
-    expect(system.length).toBeLessThan(3200);
+    expect(system.length).toBeLessThan(3600); // was 6,522 before the token work
   });
 
   it('wraps interviewer text as data and states the length', () => {

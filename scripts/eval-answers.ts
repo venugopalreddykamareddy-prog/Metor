@@ -16,7 +16,7 @@ import { findExperienceClaims } from '../shared/experienceClaims.ts';
 import { correctTerms } from '../shared/vocabulary.ts';
 import { GROQ_CHAT_LIMITS, scaled } from '../server/src/app.ts';
 import { AnswerSession } from '../server/src/answer/engine.ts';
-import { parseAnswerMaxTokens } from '../server/src/config.ts';
+import { BUDGETS_120B, BUDGETS_FAST, parseAnswerMaxTokens } from '../server/src/config.ts';
 import { summarize, styleIssues, suspectedHallucination, toCsv, type EvalQuestion, type EvalResult } from '../server/src/answer/evaluate.ts';
 import { createGroqAnswer } from '../server/src/answer/groq.ts';
 import type { AnswerRequest } from '../server/src/answer/prompt.ts';
@@ -34,7 +34,7 @@ const { values: args } = parseArgs({
     length: { type: 'string', default: 'standard' },
     out: { type: 'string', default: 'test-results/eval' },
     check: { type: 'boolean', default: false },
-    reasoning: { type: 'string', default: 'low' },
+    reasoning: { type: 'string' },
     'max-tokens': { type: 'string' },
     'confirm-free-tier': { type: 'boolean', default: false },
   },
@@ -67,13 +67,18 @@ if (engine !== 'simulated') {
   ledger = new UsageLedger(base.replace(/(\.json)?$/, '-answers.json'), scaled(GROQ_CHAT_LIMITS, ratio));
   await ledger.load();
   const model = engine === 'groq-20b' ? 'openai/gpt-oss-20b' : 'openai/gpt-oss-120b';
+  // Same defaults as the server: 120B medium, 20B (fast mode) low.
+  args.reasoning ??= engine === 'groq-20b' ? 'low' : (process.env.ANSWER_REASONING_EFFORT || 'medium');
   const reasoningEffort = args.reasoning as 'low' | 'medium' | 'high';
   if (!['low', 'medium', 'high'].includes(reasoningEffort)) throw new Error('--reasoning must be low, medium or high');
   providers[engine] = createGroqAnswer({ apiKey, model, log, reasoningEffort });
 }
 
 // Same default budgets as the server (ANSWER_MAX_TOKENS), unless --max-tokens overrides.
-const maxTokens = parseAnswerMaxTokens(args['max-tokens'] ?? process.env.ANSWER_MAX_TOKENS);
+const maxTokens =
+  engine === 'groq-20b'
+    ? parseAnswerMaxTokens(args['max-tokens'] ?? process.env.ANSWER_MAX_TOKENS_FAST, BUDGETS_FAST)
+    : parseAnswerMaxTokens(args['max-tokens'] ?? process.env.ANSWER_MAX_TOKENS, BUDGETS_120B);
 
 const { questions: all } = JSON.parse(await readFile(args.file, 'utf8')) as { questions: EvalQuestion[] };
 const categories = args.category?.split(',');
@@ -85,7 +90,7 @@ console.log(`${questions.length} questions · engine ${engine} · length ${lengt
 /** Runs one request through AnswerSession and collects what the client would receive. */
 async function ask(req: AnswerRequest) {
   const got = { header: null as Extract<ServerMessageBody, { type: 'answer.header' }> | null, text: '', done: null as Extract<ServerMessageBody, { type: 'answer.done' }> | null, failed: null as Extract<ServerMessageBody, { type: 'answer.failed' }> | null };
-  const session = new AnswerSession({ providers, ledger, maxAnswers: Number.POSITIVE_INFINITY, log, maxTokens }, (msg) => {
+  const session = new AnswerSession({ providers, ledger, maxAnswers: Number.POSITIVE_INFINITY, log, maxTokens: { [engine]: maxTokens } }, (msg) => {
     if (msg.type === 'answer.header') got.header = msg;
     else if (msg.type === 'answer.delta') got.text += msg.text;
     else if (msg.type === 'answer.done') got.done = msg;
