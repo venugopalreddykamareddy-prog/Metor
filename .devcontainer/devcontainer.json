@@ -1,0 +1,19 @@
+{
+  "name": "Metor (Node 24 + pnpm)",
+  // Official Dev Containers image: image version 4, Node 24, Debian bookworm.
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:4-24-bookworm",
+  // 2-core machine is enough for this project (ADR-003).
+  "hostRequirements": { "cpus": 2 },
+  "containerEnv": { "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0" },
+  // corepack needs sudo to write its shims in this image; pnpm version comes from package.json "packageManager".
+  "postCreateCommand": "sudo corepack enable && pnpm install --frozen-lockfile",
+  // Only the Vite client port is forwarded; it proxies /api and /ws to the server.
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "client (Vite)", "onAutoForward": "notify" },
+    "8787": { "label": "server (Fastify)", "onAutoForward": "ignore" }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["dbaeumer.vscode-eslint"] }
+  }
+}
