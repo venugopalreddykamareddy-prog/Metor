@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 import { hashPassphrase } from './server/src/auth/passphrase.ts';
 
-const PORT = 8787;
+// Not 8787, so tests can run while `pnpm dev` is up.
+const PORT = 8788;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 export const E2E_PASSPHRASE = 'e2e passphrase for tests';
 

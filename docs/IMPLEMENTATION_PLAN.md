@@ -160,7 +160,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - [x] Logout closes the user's open WebSockets with `4401`; session expiry does the same (integration test uses a 300 ms session lifetime rather than a mocked clock); client stops capture and shows login (e2e)
 - [x] Startup checks: the server refuses to start without `APP_PASSPHRASE_HASH` (stricter than planned: auth is always on), with any provider other than `simulated`, or with `ALLOW_PAID_PROVIDERS` not `false` (unit tests)
 - [x] Start shows consent dialog → browser permission prompt → indicator + timer visible
-- [ ] Audio frames reach the server with sequence numbers. Verified by integration tests (seq tracking, duplicates, gaps, acks). The dev-panel bytes/sec counter was **not built**; it fits better with latency measurement in Phase 3.
+- [x] Audio frames reach the server with sequence numbers (integration tests for seq tracking, duplicates, gaps, acks). While recording, a debug line shows what the server received in the last second: frames, KB, and audio level (e2e checks ~10 frames/s and a non-silent level from the fake mic).
 - [x] Simulated partials appear in grey and are replaced by finals
 - [x] Pause stops sending audio (AudioContext suspended; the mic stays open and the indicator says so); Stop releases the mic (e2e checks every track has ended)
 - [x] Denying permission shows a clear error and returns to Idle

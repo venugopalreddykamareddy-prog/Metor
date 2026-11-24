@@ -29,7 +29,7 @@ read -rs P && printf %s "$P" | pnpm -s hash-passphrase > .env; unset P
 | Run the build | `pnpm start` | One port (8787) serves the client, `/healthz`, and `/ws`. To view it in a browser, stop `pnpm dev` and run `PORT=5173 pnpm start` so it uses the forwarded port. Stop with **Ctrl+C**. |
 | Lint + typecheck | `pnpm lint` | ESLint, then `tsc` for client and server |
 | Unit + integration tests | `pnpm test` | Vitest |
-| Browser tests | `pnpm build && pnpm test:e2e` | Playwright (Chromium headless shell, fake microphone), against the built app. Starts its own server with a test passphrase, so stop `pnpm start` first. |
+| Browser tests | `pnpm build && pnpm test:e2e` | Playwright (Chromium headless shell, fake microphone), against the built app. Starts its own server on port 8788 with a test passphrase, so it can run alongside `pnpm dev`. |
 
 **First-time Playwright setup** (once per Codespace, ~300 MB in the Codespace only):
 

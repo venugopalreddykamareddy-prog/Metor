@@ -3,6 +3,7 @@ import {
   FRAME_SAMPLES,
   decodeAudioFrame,
   encodeAudioFrame,
+  levelDb,
   parseClientMessage,
   parseServerMessage,
 } from './messages.ts';
@@ -50,6 +51,17 @@ describe('parseServerMessage', () => {
     expect(parseServerMessage(JSON.stringify(final)).ok).toBe(true);
     const err = { type: 'error', ...env, code: 'boom', message: 'x', retryable: false };
     expect(parseServerMessage(JSON.stringify(err)).ok).toBe(false);
+  });
+});
+
+describe('levelDb', () => {
+  it('reports full scale as 0 dB, half scale as about -6 dB, and silence as -100', () => {
+    const n = 1600;
+    expect(levelDb(32768 ** 2 * n, n)).toBe(0);
+    expect(levelDb(16384 ** 2 * n, n)).toBe(-6);
+    expect(levelDb(0, n)).toBe(-100);
+    expect(levelDb(0, 0)).toBe(-100);
+    expect(levelDb(1, n)).toBe(-100); // quieter than -100 dB is floored
   });
 });
 

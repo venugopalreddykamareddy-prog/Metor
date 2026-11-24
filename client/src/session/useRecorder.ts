@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { encodeAudioFrame, type ServerMessage } from '../../../shared/messages.ts';
+
+export interface AudioStats {
+  frames: number;
+  bytes: number;
+  levelDb: number;
+}
 import { startCapture, type Capture } from '../audio/capture.ts';
 import { WsClient, sameOriginWsUrl, type ConnectionStatus } from '../net/wsClient.ts';
 import { AudioBuffer } from './audioBuffer.ts';
@@ -21,6 +27,7 @@ export function useRecorder(onAuthEnded: () => void) {
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [audioStats, setAudioStats] = useState<AudioStats | null>(null);
 
   const wsRef = useRef<WsClient | null>(null);
   const captureRef = useRef<Capture | null>(null);
@@ -41,6 +48,7 @@ export function useRecorder(onAuthEnded: () => void) {
     sessionIdRef.current = null;
     sessionReadyRef.current = false;
     bufferRef.current.clear();
+    setAudioStats(null);
     setPhase('idle');
   }, []);
 
@@ -63,6 +71,9 @@ export function useRecorder(onAuthEnded: () => void) {
           break;
         case 'audio.ack':
           bufferRef.current.ack(msg.seq);
+          break;
+        case 'audio.stats':
+          setAudioStats({ frames: msg.frames, bytes: msg.bytes, levelDb: msg.levelDb });
           break;
         case 'transcript.final':
           lastFinalSeqRef.current = Math.max(lastFinalSeqRef.current, msg.finalSeq);
@@ -180,5 +191,5 @@ export function useRecorder(onAuthEnded: () => void) {
     wsRef.current?.start();
   }, []);
 
-  return { phase, connection, transcript, error, elapsedMs, start, pause, resume, stop, reconnect };
+  return { phase, connection, transcript, error, elapsedMs, audioStats, start, pause, resume, stop, reconnect };
 }

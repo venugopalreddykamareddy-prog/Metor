@@ -116,6 +116,11 @@ button.link {
 }
 
 .error { color: var(--bad); }
+.debug {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 .muted { color: var(--muted); }
 
 .transcript h2 {

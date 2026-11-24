@@ -60,6 +60,8 @@ test('start, pause, resume and stop with simulated transcript', async ({ page })
   await startRecording(page);
   await expect(indicator(page)).toContainText(/REC 00:0\d/);
   await expect(page.getByTestId('partial')).toContainText('Can you');
+  // Chromium's fake mic plays a tone, so the server should see about 10 frames/s with a real level.
+  await expect(page.getByTestId('audio-debug')).toHaveText(/Server received: (9|10|11) frames\/s · 3\d\.\d KB\/s · level -\d{1,2} dB/);
 
   await page.getByRole('button', { name: 'Pause' }).click();
   await expect(indicator(page)).toContainText('Paused, mic still open');

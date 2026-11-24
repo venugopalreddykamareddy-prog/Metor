@@ -78,6 +78,15 @@ function Recorder({ onLoggedOut }: { onLoggedOut: () => void }) {
         )}
       </div>
 
+      {micOpen && (
+        <p className="debug" data-testid="audio-debug">
+          Server received:{' '}
+          {recorder.audioStats
+            ? `${recorder.audioStats.frames} frames/s · ${(recorder.audioStats.bytes / 1024).toFixed(1)} KB/s · level ${recorder.audioStats.levelDb.toFixed(0)} dB`
+            : 'waiting…'}
+        </p>
+      )}
+
       {recorder.error && <p role="alert" className="error">{recorder.error}</p>}
 
       <TranscriptPane transcript={recorder.transcript} />

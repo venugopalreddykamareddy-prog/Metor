@@ -165,6 +165,19 @@ describe('recording', () => {
     rec.ws.terminate();
   });
 
+  it('reports frames, bytes, and level received each second', async () => {
+    const app = await makeApp();
+    const rec = await startRecording(app, await loginCookie(app));
+    const loud = new Int16Array(FRAME_SAMPLES).fill(16384); // half scale, about -6 dB
+    for (let seq = 0; seq < 5; seq++) rec.ws.send(Buffer.from(encodeAudioFrame(seq, loud)));
+    const stats = await rec.waitFor((m) => m.type === 'audio.stats' && (m.frames as number) > 0, 2500);
+    expect(stats).toMatchObject({ frames: 5, bytes: 5 * (4 + FRAME_SAMPLES * 2), levelDb: -6 });
+    // With no audio the next report is zeros, not a repeat of the last one.
+    const idle = await rec.waitFor((m) => m.type === 'audio.stats' && m !== stats, 2500);
+    expect(idle).toMatchObject({ frames: 0, bytes: 0, levelDb: -100 });
+    rec.ws.terminate();
+  });
+
   it('finalizes the partial after a second without audio (pause or end of speech)', async () => {
     const app = await makeApp();
     const rec = await startRecording(app, await loginCookie(app));

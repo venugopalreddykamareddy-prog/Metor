@@ -17,7 +17,7 @@ There is no real transcription or AI yet. The transcript is **simulated**: canne
 
 - **Login** with a single passphrase (scrypt hash in `.env`), an HttpOnly session cookie, and a lockout after 5 wrong attempts. Logout or the 12-hour expiry closes open connections.
 - **Recording**: Start asks for consent, then the browser's mic permission. A red indicator with a timer shows while the mic is open. Pause, Resume, and Stop work; Stop, logout, and lost sessions release the mic.
-- **Audio path**: an AudioWorklet downsamples the mic to 16 kHz PCM and sends 100 ms frames over the WebSocket. The server returns partial and final transcript lines.
+- **Audio path**: an AudioWorklet downsamples the mic to 16 kHz PCM and sends 100 ms frames over the WebSocket. The server returns partial and final transcript lines, and a debug line shows the frames, bytes, and audio level it received each second.
 - **Recovery**: if the connection drops, the client keeps up to 3 s of audio, reconnects, and resumes the session (the server keeps it for 30 s). Missed lines are replayed; lost audio shows as a gap.
 - **Server**: Fastify on `127.0.0.1:8787` with `/healthz`. Every message is validated, audio faster than real time is cut off, logs never contain message content or the passphrase, and shutdown is clean.
 - Unit, integration, and Playwright tests (with a fake mic) run in GitHub Actions on every push and PR.

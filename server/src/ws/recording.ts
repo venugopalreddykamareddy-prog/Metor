@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from '@fastify/websocket';
-import { FRAME_MS, type ServerMessageBody } from '../../../shared/messages.ts';
+import { FRAME_MS, levelDb, type ServerMessageBody } from '../../../shared/messages.ts';
 import type { SttFactory, SttStream } from '../stt/types.ts';
 
 const MAX_REPLAY_FINALS = 50;
 const ACK_INTERVAL_MS = 1000;
 /** No audio for this long counts as end of speech (also covers Pause). */
 const IDLE_FINALIZE_MS = 1000;
+const STATS_INTERVAL_MS = 1000;
 
 type FinalMessage = Extract<ServerMessageBody, { type: 'transcript.final' }>;
 
@@ -29,6 +30,8 @@ export class Recording {
   private readonly finals: FinalMessage[] = [];
   private readonly stt: SttStream;
   private idleTimer: NodeJS.Timeout | null = null;
+  private readonly statsTimer: NodeJS.Timeout;
+  private stats = { frames: 0, bytes: 0, sumSquares: 0, samples: 0 };
 
   constructor(authId: string, socket: WebSocket, createStt: SttFactory) {
     this.authId = authId;
@@ -51,6 +54,9 @@ export class Recording {
         this.emit(final);
       },
     });
+    // Reports every second, including zeros while paused, so the debug line never shows stale numbers.
+    this.statsTimer = setInterval(() => this.emitStats(), STATS_INTERVAL_MS);
+    this.statsTimer.unref();
   }
 
   isAttachedTo(socket: WebSocket): boolean {
@@ -61,7 +67,12 @@ export class Recording {
     return this.lastSeq + 1;
   }
 
-  handleAudio(seq: number, samples: Int16Array): void {
+  /** `byteLength` is the whole binary message, header included. */
+  handleAudio(seq: number, samples: Int16Array, byteLength: number): void {
+    this.stats.frames += 1;
+    this.stats.bytes += byteLength;
+    for (const s of samples) this.stats.sumSquares += s * s;
+    this.stats.samples += samples.length;
     if (seq <= this.lastSeq) return; // duplicate resent after a reconnect
     if (seq > this.lastSeq + 1) {
       this.emit({ type: 'transcript.gap', fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
@@ -98,7 +109,14 @@ export class Recording {
 
   dispose(): void {
     this.clearIdleTimer();
+    clearInterval(this.statsTimer);
     this.socket = null;
+  }
+
+  private emitStats(): void {
+    const { frames, bytes, sumSquares, samples } = this.stats;
+    this.stats = { frames: 0, bytes: 0, sumSquares: 0, samples: 0 };
+    this.emit({ type: 'audio.stats', frames, bytes, levelDb: levelDb(sumSquares, samples) });
   }
 
   private ack(): void {

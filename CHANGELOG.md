@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 - Phase 2 (PR #4): passphrase login (scrypt, HttpOnly SameSite=Strict cookie, 12 h expiry, 5-attempt lockout, Origin check on writes); `pnpm hash-passphrase`; server refuses to start without a passphrase hash or with non-simulated providers.
 - Mic recording with a consent dialog, recording indicator and timer, and Start / Pause / Resume / Stop. An AudioWorklet downsamples to 16 kHz PCM16 and sends 100 ms frames with sequence numbers.
 - Simulated transcription (canned lines at speaking pace) with partials, finals, and gap markers.
+- Audio debug line while recording: frames/s, KB/s, and RMS level as received by the server (`audio.stats`, once per second, zeros while paused).
 - Session recovery: 3 s client audio buffer, server acks, 30 s resume window, replay of missed finals, and takeover when the server still holds a stale socket. Logout and session expiry close sockets with code 4401.
 - The mic is released on Stop, logout, login expiry, and terminal connection failure (Playwright checks every track ended).
 - Phase 1 (PR #2): pnpm project with Node 24 and pnpm pinned; React + Vite client with connection status and a message echo; Fastify server on `127.0.0.1` with `/healthz` and `/ws`.

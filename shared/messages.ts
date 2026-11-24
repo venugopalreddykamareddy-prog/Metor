@@ -31,6 +31,14 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('session.started'), ...envelope, sessionId }),
   z.strictObject({ type: z.literal('session.resumed'), ...envelope, sessionId, nextAudioSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('audio.ack'), ...envelope, seq: z.number().int().min(0) }),
+  // What the server received in the last second; levelDb is the RMS level (-100 = silence, 0 = full scale).
+  z.strictObject({
+    type: z.literal('audio.stats'),
+    ...envelope,
+    frames: z.number().int().min(0),
+    bytes: z.number().int().min(0),
+    levelDb: z.number().min(-100).max(0),
+  }),
   z.strictObject({ type: z.literal('transcript.partial'), ...envelope, segmentId: z.string(), text: z.string() }),
   z.strictObject({
     type: z.literal('transcript.final'),
@@ -96,6 +104,13 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
 /** Parse and validate a raw server→client frame. Never throws. */
 export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
   return parseWith(serverMessageSchema, raw);
+}
+
+/** RMS level in dBFS from a sum of squared int16 samples, floored at -100. */
+export function levelDb(sumSquares: number, sampleCount: number): number {
+  if (sampleCount === 0 || sumSquares === 0) return -100;
+  const rms = Math.sqrt(sumSquares / sampleCount) / 32768;
+  return Math.max(-100, Math.round(20 * Math.log10(rms) * 10) / 10);
 }
 
 /** Builds a binary audio frame: big-endian uint32 seq followed by PCM16 samples. */

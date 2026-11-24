@@ -72,7 +72,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
           }
           const frame = decodeAudioFrame(bytes);
           if (!frame.ok) return sendError(socket, 'bad_request', frame.error);
-          recording.handleAudio(frame.seq, frame.samples);
+          recording.handleAudio(frame.seq, frame.samples, bytes.byteLength);
           return;
         }
 
