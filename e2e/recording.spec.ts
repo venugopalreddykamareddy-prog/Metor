@@ -63,17 +63,17 @@ test('start, pause, resume and stop with simulated transcript', async ({ page })
   // Chromium's fake mic plays a tone, so the server should see about 10 frames/s with a real level.
   await expect(page.getByTestId('audio-debug')).toHaveText(/Server received: (9|10|11) frames\/s · 3\d\.\d KB\/s · level -\d{1,2} dB/);
 
-  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(indicator(page)).toContainText('Paused, mic still open');
   // No audio while paused, so the server finalizes the partial after a second.
   await expect(firstFinal(page)).toContainText(/^Can you/);
   expect(await liveTrackCount(page)).toBe(1);
 
-  await page.getByRole('button', { name: 'Resume' }).click();
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(indicator(page)).toContainText('REC');
   await expect(page.getByTestId('partial')).toContainText('What');
 
-  await page.getByRole('button', { name: 'Stop' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(indicator(page)).toBeHidden();
   expect(await liveTrackCount(page)).toBe(0);
   await expect(firstFinal(page)).toBeVisible(); // transcript is kept after stop
@@ -150,7 +150,7 @@ test('a failed resume stops recording and keeps the transcript', async ({ page }
   await login(page);
   await startRecording(page);
   await expect(page.getByTestId('partial')).toBeVisible();
-  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(firstFinal(page)).toBeVisible();
 
   dropConnection();

@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UsageLedger, type QuotaLimits } from './usageLedger.ts';
 
 const LIMITS: QuotaLimits = {
-  perMinute: { requests: 3, audioSeconds: 1000 },
-  perHour: { requests: 5, audioSeconds: 40 },
-  perDay: { requests: 8, audioSeconds: 1000 },
+  perMinute: { requests: 3, units: 1000 },
+  perHour: { requests: 5, units: 40 },
+  perDay: { requests: 8, units: 1000 },
 };
 const MINUTE = 60_000;
 
@@ -31,27 +31,27 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const tenSeconds = { requests: 1, audioSeconds: 10 };
+const tenSeconds = { requests: 1, units: 10 };
 
 describe('UsageLedger', () => {
   it('enforces per-minute, per-hour, and per-day windows', () => {
     const ledger = makeLedger(join(dir, 'l.json'));
-    expect([1, 2, 3].map(() => ledger.reserve({ requests: 1, audioSeconds: 1 }))).toEqual([true, true, true]);
-    expect(ledger.reserve({ requests: 1, audioSeconds: 1 })).toBe(false); // 4th in the same minute
+    expect([1, 2, 3].map(() => ledger.reserve({ requests: 1, units: 1 }))).toEqual([true, true, true]);
+    expect(ledger.reserve({ requests: 1, units: 1 })).toBe(false); // 4th in the same minute
     clock += MINUTE;
-    expect(ledger.reserve({ requests: 1, audioSeconds: 1 })).toBe(true);
-    expect(ledger.reserve({ requests: 1, audioSeconds: 1 })).toBe(true);
-    expect(ledger.reserve({ requests: 1, audioSeconds: 1 })).toBe(false); // 6th in the hour
+    expect(ledger.reserve({ requests: 1, units: 1 })).toBe(true);
+    expect(ledger.reserve({ requests: 1, units: 1 })).toBe(true);
+    expect(ledger.reserve({ requests: 1, units: 1 })).toBe(false); // 6th in the hour
     clock += 60 * MINUTE;
-    expect(ledger.usedInLast(60)).toEqual({ requests: 0, audioSeconds: 0 });
-    expect(ledger.usedInLast(24 * 60)).toEqual({ requests: 5, audioSeconds: 5 });
+    expect(ledger.usedInLast(60)).toEqual({ requests: 0, units: 0 });
+    expect(ledger.usedInLast(24 * 60)).toEqual({ requests: 5, units: 5 });
   });
 
   it('refuses a request that would exceed audio seconds, and records nothing', () => {
     const ledger = makeLedger(join(dir, 'l.json'));
     expect(ledger.reserve(tenSeconds)).toBe(true);
     clock += MINUTE;
-    expect(ledger.reserve({ requests: 1, audioSeconds: 31 })).toBe(false); // 41 > 40 per hour
+    expect(ledger.reserve({ requests: 1, units: 31 })).toBe(false); // 41 > 40 per hour
     expect(ledger.usedInLast(60)).toEqual(tenSeconds);
   });
 
@@ -66,14 +66,23 @@ describe('UsageLedger', () => {
 
     const second = makeLedger(path);
     await second.load();
-    expect(second.usedInLast(60)).toEqual({ requests: 2, audioSeconds: 20 });
+    expect(second.usedInLast(60)).toEqual({ requests: 2, units: 20 });
     clock += (24 * 60 - 1) * MINUTE; // the first bucket is now 24 h old, the second just inside
-    expect(second.usedInLast(24 * 60)).toEqual({ requests: 1, audioSeconds: 10 });
+    expect(second.usedInLast(24 * 60)).toEqual({ requests: 1, units: 10 });
+  });
+
+  it('settles a reservation to the reported usage', () => {
+    const ledger = makeLedger(join(dir, 'l.json'));
+    const ticket = ledger.reserveTicket({ requests: 1, units: 30 });
+    expect(ticket).not.toBeNull();
+    ledger.settle(ticket ?? 0, 30, 12);
+    expect(ledger.usedInLast(60)).toEqual({ requests: 1, units: 12 });
+    expect(ledger.reserveTicket({ requests: 1, units: 1000 })).toBeNull();
   });
 
   it('starts empty when there is no file yet', async () => {
     const ledger = makeLedger(join(dir, 'missing.json'));
     await ledger.load();
-    expect(ledger.usedInLast(24 * 60)).toEqual({ requests: 0, audioSeconds: 0 });
+    expect(ledger.usedInLast(24 * 60)).toEqual({ requests: 0, units: 0 });
   });
 });

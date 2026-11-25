@@ -8,9 +8,9 @@ import { UsageLedger, type QuotaLimits } from '../limits/usageLedger.ts';
 import { GROQ_TRANSCRIPTIONS_URL, MAX_SEGMENT_MS, createGroqStt } from './groq.ts';
 
 const ROOMY: QuotaLimits = {
-  perMinute: { requests: 100, audioSeconds: 10_000 },
-  perHour: { requests: 100, audioSeconds: 10_000 },
-  perDay: { requests: 100, audioSeconds: 10_000 },
+  perMinute: { requests: 100, units: 10_000 },
+  perHour: { requests: 100, units: 10_000 },
+  perDay: { requests: 100, units: 10_000 },
 };
 const silentLog = { info() {}, warn() {}, error() {} } as unknown as FastifyBaseLogger;
 
@@ -166,7 +166,7 @@ describe('Groq STT', () => {
   });
 
   it('refuses to call Groq when the local free-tier budget is used up', async () => {
-    const t = setup({ limits: { ...ROOMY, perHour: { requests: 100, audioSeconds: 15 } } });
+    const t = setup({ limits: { ...ROOMY, perHour: { requests: 100, units: 15 } } });
     for (let i = 0; i < 2; i++) {
       t.feed(tone, 1000);
       t.feed(silence, 1500);

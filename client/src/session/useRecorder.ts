@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { encodeAudioFrame, type ServerMessage } from '../../../shared/messages.ts';
+import { encodeAudioFrame, type ClientMessageBody, type ServerMessage } from '../../../shared/messages.ts';
 import { startCapture, type Capture } from '../audio/capture.ts';
 import { WsClient, sameOriginWsUrl, type ConnectionStatus } from '../net/wsClient.ts';
 import { startWebSpeech, type WebSpeech } from '../stt/webspeech.ts';
@@ -40,12 +40,19 @@ interface ActiveRecording {
   stop(): void;
 }
 
-/** Mic capture + transcription (ARCHITECTURE §4, §6.2–6.3). `onAuthEnded` runs when the server ends the login. */
-export function useRecorder(onAuthEnded: () => void) {
+export type AnswerMessage = Extract<ServerMessage, { type: `answer.${string}` }>;
+
+/**
+ * Mic capture + transcription (ARCHITECTURE §4, §6.2–6.3). `onAuthEnded` runs when the server ends
+ * the login; answer messages on the same socket go to `onAnswerMessage`.
+ */
+export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: AnswerMessage) => void = () => {}) {
   const [phase, setPhase] = useState<RecorderPhase>('idle');
   const [connection, setConnection] = useState<ConnectionStatus>('disconnected');
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript);
   const [error, setError] = useState<string | null>(null);
+  // Set for a Groq free-tier quota error, so the UI can offer Browser speech (with consent).
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [audioStats, setAudioStats] = useState<AudioStats | null>(null);
   const [latencies, setLatencies] = useState<number[]>([]);
@@ -62,6 +69,8 @@ export function useRecorder(onAuthEnded: () => void) {
   const timeRef = useRef({ total: 0, since: 0 });
   const onAuthEndedRef = useRef(onAuthEnded);
   onAuthEndedRef.current = onAuthEnded;
+  const onAnswerRef = useRef(onAnswerMessage);
+  onAnswerRef.current = onAnswerMessage;
 
   const addLatency = (ms: number) => setLatencies((l) => [...l.slice(-(MAX_LATENCY_SAMPLES - 1)), ms]);
 
@@ -114,6 +123,12 @@ export function useRecorder(onAuthEnded: () => void) {
         case 'transcript.gap':
           applyMessage(msg);
           break;
+        case 'answer.header':
+        case 'answer.delta':
+        case 'answer.done':
+        case 'answer.failed':
+          onAnswerRef.current(msg);
+          break;
         case 'error':
           // Terminal: the session is gone, the length limit hit, or the mode can't start at all.
           // Other errors (Groq quota, a failed upload) are shown while recording continues.
@@ -130,6 +145,7 @@ export function useRecorder(onAuthEnded: () => void) {
             );
           } else {
             setError(msg.message);
+            if (msg.code === 'quota_exhausted') setQuotaExhausted(true);
           }
           break;
       }
@@ -256,6 +272,7 @@ export function useRecorder(onAuthEnded: () => void) {
     if (activeRef.current) return;
     if (mode !== 'webspeech' && !wsRef.current?.isOpen) return;
     setError(null);
+    setQuotaExhausted(false);
     setPhase('starting');
     lastFinalSeqRef.current = 0;
     setTranscript(emptyTranscript);
@@ -291,14 +308,19 @@ export function useRecorder(onAuthEnded: () => void) {
 
   const reconnect = useCallback(() => {
     setError(null);
+    setQuotaExhausted(false);
     wsRef.current?.start();
   }, []);
+
+  /** Sends a non-audio message (answer requests); false when disconnected. */
+  const send = useCallback((msg: ClientMessageBody) => wsRef.current?.send(msg) ?? false, []);
 
   return {
     phase,
     connection,
     transcript,
     error,
+    quotaExhausted,
     elapsedMs,
     audioStats,
     latencies,
@@ -309,5 +331,6 @@ export function useRecorder(onAuthEnded: () => void) {
     stop: release,
     clear,
     reconnect,
+    send,
   };
 }

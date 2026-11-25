@@ -1,6 +1,7 @@
 // Message schemas for /ws (ARCHITECTURE §6.2). JSON messages are { type, id, ts, ...payload }.
 // Audio travels as binary frames: 4-byte big-endian sequence number + PCM16 mono samples.
 import { z } from 'zod';
+import { ASSESSMENTS, QUESTION_TYPES } from './answerFormat.ts';
 import { FRAME_SAMPLES } from './audio.ts';
 
 export { FRAME_MS, FRAME_SAMPLES, SAMPLE_RATE } from './audio.ts';
@@ -17,12 +18,43 @@ const envelope = {
 };
 const sessionId = z.uuid();
 
+export const ANSWER_LENGTHS = ['short', 'standard', 'detailed'] as const;
+/** Answer engines the UI can pick. Groq ones are offered only when GROQ_API_KEY is set. */
+export const ANSWER_ENGINES = ['simulated', 'groq-120b', 'groq-20b'] as const;
+export type AnswerLength = (typeof ANSWER_LENGTHS)[number];
+export type AnswerEngine = (typeof ANSWER_ENGINES)[number];
+
+const questionId = z.string().min(1).max(64);
+const answerRequest = z.strictObject({
+  type: z.literal('answer.request'),
+  id: z.string().min(1).max(64),
+  ts: z.number().int().nonnegative(),
+  questionId,
+  /** Clean text of the extracted question. */
+  question: z.string().min(1).max(1000),
+  /** Raw text it came from, when cleaning changed it (lets the model spot mishearings). */
+  heard: z.string().max(1000).optional(),
+  length: z.enum(ANSWER_LENGTHS),
+  engine: z.enum(ANSWER_ENGINES),
+  /** Statements said just before the question ("we run payments on AKS"). */
+  statements: z.array(z.string().max(500)).max(5),
+  /** Recent questions and the answers shown for them, oldest first. */
+  turns: z.array(z.strictObject({ question: z.string().max(1000), answer: z.string().max(1500) })).max(4),
+  /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
+  earlier: z.array(z.string().max(300)).max(10).optional(),
+  isFollowUp: z.boolean(),
+  /** Regenerate: skip the answer cache and make a new request. */
+  fresh: z.boolean().optional(),
+});
+
 // Client → server
 export const clientMessageSchema = z.discriminatedUnion('type', [
   // Web Speech runs in the browser, so only server-side transcription modes start a session here.
   z.strictObject({ type: z.literal('session.start'), ...envelope, mode: z.enum(['simulated', 'groq']), source: z.literal('mic') }),
   z.strictObject({ type: z.literal('session.resume'), ...envelope, sessionId, lastFinalSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('session.stop'), ...envelope }),
+  answerRequest,
+  z.strictObject({ type: z.literal('answer.cancel'), ...envelope, questionId }),
 ]);
 
 // Server → client
@@ -61,6 +93,44 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     latencyMs: z.number().min(0).optional(),
   }),
   z.strictObject({ type: z.literal('transcript.gap'), ...envelope, fromMs: z.number().min(0), toMs: z.number().min(0) }),
+  z.strictObject({
+    type: z.literal('answer.header'),
+    ...envelope,
+    questionId,
+    questionType: z.enum([...QUESTION_TYPES, 'unknown']),
+    assessment: z.enum(ASSESSMENTS),
+    note: z.string().max(500).nullable(),
+    clarify: z.string().max(500).nullable(),
+  }),
+  z.strictObject({ type: z.literal('answer.delta'), ...envelope, questionId, text: z.string().max(4000) }),
+  z.strictObject({
+    type: z.literal('answer.done'),
+    ...envelope,
+    questionId,
+    model: z.string().max(100),
+    /** Server receipt of the request → first answer text (after the header). */
+    firstTokenMs: z.number().min(0).nullable(),
+    totalMs: z.number().min(0),
+    /** As reported by the provider; null when not reported. reasoningTokens is part of completionTokens. */
+    usage: z
+      .strictObject({
+        promptTokens: z.number().int().min(0),
+        completionTokens: z.number().int().min(0),
+        reasoningTokens: z.number().int().min(0).nullable(),
+      })
+      .nullable(),
+    /** The completion-token budget ran out before the answer finished. */
+    truncated: z.boolean(),
+    /** Replayed from this session's answer cache; no provider request was made. */
+    cached: z.boolean(),
+  }),
+  z.strictObject({
+    type: z.literal('answer.failed'),
+    ...envelope,
+    questionId,
+    code: z.enum(['cancelled', 'duplicate', 'quota_exhausted', 'provider_unavailable', 'limit_reached', 'bad_request']),
+    message: z.string().max(300),
+  }),
   z.strictObject({
     type: z.literal('error'),
     ...envelope,

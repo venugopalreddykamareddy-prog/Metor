@@ -6,6 +6,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 4 (PR #6): question understanding and streaming answers. Local question extraction from the clean transcript (compound questions kept whole, requests without "?", incomplete phrases wait, superseded and repeated questions, duplicates dropped); Groq GPT-OSS 120B/20B and simulated answer providers; one request per question with a parsed TYPE / NOTE / ASSESSMENT / CLARIFY header; cancel and replace; per-session limits; free-tier token ledger; `/api/usage`.
+- Answer workspace: three resizable panels (drag or arrow keys, remembered) with the answers panel at about 55% by default; transcript and questions collapse to rails; focus mode for the latest question and answer (Esc exits; the recording indicator stays visible); answer text size and line spacing settings; Copy answer button.
+- Answers are grouped per question: Regenerate and "Answer again" add versions instead of replacing, an answer stopped by a newer question keeps its text, and a repeated question moves its earlier answer to the end. Off-topic results show as a one-line note, not an answer card.
+- Simulated answers are labeled "Simulated · not AI" (dashed, hatched card, placeholder text prefix); Groq answers are labeled "AI-generated" with the model. The settings bar says which one is selected.
+- `pnpm eval:answers`: runs `eval/answer-questions.json` through the same term fixes, extraction, prompt, parser and ledger as the app; writes JSON and a CSV with grading columns; automatic checks for assessment accuracy, false-positive flags, suspected hallucinations, textbook style, and latency. CI runs it with the simulated engine (`--check`); Groq runs need `--confirm-free-tier`.
+- Playwright tests for answers: spoken question → extracted → simulated answer labeled as such; regenerate keeps versions; copy; a new question stops the previous answer but keeps its text; panel widths, resizing and persistence; collapsing; focus mode with display settings.
+- "solo" is read as SLO only with reliability context ("an solo", "latency solo", "solo burn rate", "our solos" next to availability or error-budget words); "worked solo", "a guitar solo", "a solo project" stay as they are.
+- ADR-014: medium reasoning effort for GPT-OSS answers and NOTE before ASSESSMENT in the header.
+- Claimed-experience safety net (`shared/experienceClaims.ts`): answers that say "I've built…", "at my last company…" and similar get a red "Claims experience you haven't verified" note, and the evaluation flags them in every category. The prompt now forbids past-tense first-person claims for every question type.
+- Local rolling summary: questions older than the last three turns go along as `earlier` (≤ 800 characters), with no extra request.
+- First Groq evaluation (28 of 113 questions plus a 6-question re-check) in `eval/results/` and docs/ANSWER_EVALUATION.md; owner's fourth manual test recorded in docs/STT_EVALUATION.md.
+
+- Token optimization: GPT-OSS 20B with low reasoning effort by default and 120B selectable or per answer ("Regenerate with 120B"); completion budgets 256 / 512 / 1024 (`ANSWER_MAX_TOKENS`) and effort (`ANSWER_REASONING_EFFORT`) configurable; system prompt 6.5K → 3.0K characters; earlier turns sent only when the question needs them (answers trimmed to 600 characters); a per-connection answer cache (memory only) replays repeats with no request, and Regenerate bypasses it; cut-off answers are marked. Measured ~2.0K → ~1.0K tokens per answer on the same questions, with weaker premise checking (docs/ANSWER_EVALUATION.md).
+- Answer model defaults: GPT-OSS 120B with medium reasoning (budgets 1,000 / 1,400 / 2,200) is the default again; 20B with low reasoning (256 / 512 / 1024) is the optional fast mode. Effort and budgets are per model (`ANSWER_REASONING_EFFORT`, `ANSWER_MAX_TOKENS`, `ANSWER_MAX_TOKENS_FAST`).
+- Prompt: premise traps spelled out (swapped terms, wrong component, wrong arithmetic, wrong protocol class); for unrecognized terms, no substitute settings, flags, commands or config values unless certain; examples no longer taken from the evaluation sets (test). The UI warns about specific settings or commands named next to an unrecognized term (`shared/unverifiedSpecifics.ts`).
+- Availability number checks (`shared/numericChecks.ts`): a general prompt rule (higher availability = stricter target; downtime = (100% − availability) × period) plus a local check of answers for comparisons that contradict their numbers ("SLA tighter than the SLO" at 99.9% vs 99.95%) and wrong downtime arithmetic; shown as "Check the numbers" and flagged in the evaluation.
+- Token tracking: input, output and reasoning tokens per answer (where Groq reports them) on each card, in `/api/usage` per engine since server start, and in the evaluation; the settings bar shows the free-tier requests and tokens left today and the average tokens per answer.
+
+### Fixed
+
+- Accuracy-check term recall: a term next to `-` or `/` ("Terraform-managed", "Terraform/Helm") was marked missed; whole-word matching keeps p95/p99 and AKS/EKS distinct.
+- Question extraction: an unpunctuated question followed by a first-person answer ("…for a payments api i would start with p99…") no longer merges into one question (fixture ext-31, from the owner's Browser speech run).
+- Manual-testing fixes: unrecognized terms and ambiguous acronyms now get only a short clarification (prompt rule plus a server-side limiter that drops any explanation after it; cache and token accounting unchanged). Typed, merged and regenerated questions show submitted → first word instead of speech-end latency. Assessment notes no longer repeat the label or the question the answer already asks.
+- Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.
+- Playwright's test server now blanks `GROQ_API_KEY` and `GEMINI_API_KEY`, so a key in the Codespace environment can't make browser tests call a real provider.
+- Answer header parser accepts a one-line header with `|` separators and either field order.
+- A Groq answer with no text (reasoning used the whole budget) now fails with "Try Regenerate" instead of finishing empty; completion budgets raised to 1,000 / 1,400 / 2,200 tokens.
+- Transcript auto-scroll runs before paint (`useLayoutEffect`), so new lines never flash above the fold.
+
+### Changed
+
+- Transcription mode: Groq Whisper is preselected when configured and within its free quota, Browser speech otherwise (owner's benchmark recorded in docs/STT_EVALUATION.md). A Groq quota error offers "Switch to Browser speech" through the consent dialog; never automatic. The usage line shows transcription and answer budgets separately.
+- Answer prompt: spoken, conversational style (contractions, answer first, one hypothetical example, no markdown or stock phrases, no formulaic closer) with a textbook-vs-spoken example; explicit check of every named term and built-in claim before the header; an unknown feature is never described or used as if real.
+- The answer's Stop button is now "Stop answer", so it can't be confused with stopping the recording.
+
+### Added (earlier phases)
+
 - Phase 3 (PR #5): real transcription. Mode selector with Simulated, Browser speech (Web Speech API on Metor's own mic track, restarts after silence, phrase boosting where supported), and Groq Whisper (free tier, offered only when `GROQ_API_KEY` is set).
 - Groq segments sized for the free-tier quota (voice detection with an adaptive noise floor, ≥ 8 s or a 1.5 s pause up to twice a minute, 30 s cap), WAV upload with a vocabulary prompt, and filtering of silence and Whisper hallucinations. A 429 pauses uploads until the reset time; no paid fallback.
 - File-backed usage ledger: requests and audio seconds per minute for 24 h, charged before each Groq call, capped at 80% of the published free-tier limits.

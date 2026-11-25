@@ -7,6 +7,10 @@ import { MAX_PAYLOAD_BYTES } from '../../shared/messages.ts';
 import type { ServerConfig } from './config.ts';
 import { registerAuthRoutes } from './auth/routes.ts';
 import { AuthSessions } from './auth/sessions.ts';
+import { createGroqAnswer } from './answer/groq.ts';
+import { createSimulatedAnswer } from './answer/simulated.ts';
+import { AnswerStats } from './answer/stats.ts';
+import type { AnswerProvider } from './answer/types.ts';
 import { UsageLedger, type QuotaLimits } from './limits/usageLedger.ts';
 import { createGroqStt } from './stt/groq.ts';
 import { createSimulatedStt } from './stt/simulated.ts';
@@ -19,21 +23,31 @@ interface BuildOptions {
   logStream?: { write(line: string): void };
   /** Replaces global fetch for Groq calls. Tests use it; CI never calls Groq. */
   groqFetch?: typeof fetch;
+  /** Delay between simulated answer words; tests use 0. */
+  simulatedAnswerDelayMs?: number;
 }
 
 // Groq's published Whisper limits (checked 2026-11-24; the page labels them Developer plan, and
 // free-tier values may be lower). The ledger allows FREE_QUOTA_SAFETY_RATIO of them; a 429 from
 // Groq still pauses transcription.
 const GROQ_WHISPER_LIMITS: QuotaLimits = {
-  perMinute: { requests: 20, audioSeconds: 7200 },
-  perHour: { requests: 2000, audioSeconds: 7200 },
-  perDay: { requests: 2000, audioSeconds: 28_800 },
+  perMinute: { requests: 20, units: 7200 },
+  perHour: { requests: 2000, units: 7200 },
+  perDay: { requests: 2000, units: 28_800 },
 };
 
-function scaled(limits: QuotaLimits, ratio: number): QuotaLimits {
-  const scale = (u: { requests: number; audioSeconds: number }) => ({
+// Groq's published limits for openai/gpt-oss-20b and -120b (checked 2026-11-24, Developer-plan
+// table): 30 requests/min, 1K/day, 8K tokens/min, 200K tokens/day. No hourly limit is listed.
+export const GROQ_CHAT_LIMITS: QuotaLimits = {
+  perMinute: { requests: 30, units: 8000 },
+  perHour: { requests: 1000, units: 200_000 },
+  perDay: { requests: 1000, units: 200_000 },
+};
+
+export function scaled(limits: QuotaLimits, ratio: number): QuotaLimits {
+  const scale = (u: { requests: number; units: number }) => ({
     requests: Math.floor(u.requests * ratio),
-    audioSeconds: Math.floor(u.audioSeconds * ratio),
+    units: Math.floor(u.units * ratio),
   });
   return { perMinute: scale(limits.perMinute), perHour: scale(limits.perHour), perDay: scale(limits.perDay) };
 }
@@ -51,17 +65,31 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     bodyLimit: MAX_PAYLOAD_BYTES,
   });
 
+  const answerStats = new AnswerStats();
   const recordings = new Recordings(config.resumeGraceMs, config.maxTranscriptionMs);
   const sessions = new AuthSessions(config.sessionTtlMs, (authId) => recordings.removeForAuth(authId));
 
   let groq: ReturnType<typeof createGroqStt> | undefined;
+  let sttLedger: UsageLedger | null = null;
+  let chatLedger: UsageLedger | null = null;
+  const answerProviders: Partial<Record<'simulated' | 'groq-120b' | 'groq-20b', AnswerProvider>> = {
+    simulated: createSimulatedAnswer(opts.simulatedAnswerDelayMs),
+  };
   if (config.groq) {
-    const ledger = new UsageLedger(config.usageLedgerPath, scaled(GROQ_WHISPER_LIMITS, config.freeQuotaRatio), {
-      onWriteError: (err) => app.log.error({ err }, 'could not save usage ledger'),
+    const onWriteError = (err: unknown) => app.log.error({ err }, 'could not save usage ledger');
+    const fetchOpt = opts.groqFetch ? { fetch: opts.groqFetch } : {};
+    sttLedger = new UsageLedger(config.usageLedgerPath, scaled(GROQ_WHISPER_LIMITS, config.freeQuotaRatio), { onWriteError });
+    chatLedger = new UsageLedger(config.usageLedgerPath.replace(/(\.json)?$/, '-answers.json'), scaled(GROQ_CHAT_LIMITS, config.freeQuotaRatio), {
+      onWriteError,
     });
-    await ledger.load();
-    groq = createGroqStt({ ...config.groq, ledger, log: app.log, ...(opts.groqFetch ? { fetch: opts.groqFetch } : {}) });
-    app.addHook('onClose', () => ledger.flush());
+    await Promise.all([sttLedger.load(), chatLedger.load()]);
+    groq = createGroqStt({ ...config.groq, ledger: sttLedger, log: app.log, ...fetchOpt });
+    const { apiKey } = config.groq;
+    const { answerModels: m } = config;
+    answerProviders['groq-120b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-120b', log: app.log, reasoningEffort: m['groq-120b'].effort, ...fetchOpt });
+    answerProviders['groq-20b'] = createGroqAnswer({ apiKey, model: 'openai/gpt-oss-20b', log: app.log, reasoningEffort: m['groq-20b'].effort, ...fetchOpt });
+    const ledgers = [sttLedger, chatLedger];
+    app.addHook('onClose', () => Promise.all(ledgers.map((l) => l.flush())).then(() => undefined));
   }
 
   await app.register(websocket, { options: { maxPayload: MAX_PAYLOAD_BYTES } });
@@ -74,12 +102,32 @@ export async function buildApp(config: ServerConfig, opts: BuildOptions = {}): P
     sessionTtlMs: config.sessionTtlMs,
     allowedOrigins: config.allowedOrigins,
     providers: { groq: groq !== undefined },
+    usage: () => {
+      if (!sttLedger || !chatLedger) return { groq: null, answerTokens: answerStats.snapshot() };
+      const windows = (l: UsageLedger) => ({ lastMinute: l.usedInLast(1), lastHour: l.usedInLast(60), lastDay: l.usedInLast(24 * 60) });
+      return {
+        groq: {
+          transcription: { ...windows(sttLedger), limits: scaled(GROQ_WHISPER_LIMITS, config.freeQuotaRatio), unit: 'audio seconds' },
+          answers: { ...windows(chatLedger), limits: scaled(GROQ_CHAT_LIMITS, config.freeQuotaRatio), unit: 'tokens' },
+        },
+        // Since server start, per engine; counts only, no question text.
+        answerTokens: answerStats.snapshot(),
+      };
+    },
   });
   await registerGateway(app, {
     allowedOrigins: config.allowedOrigins,
     sessions,
     recordings,
     stt: { simulated: createSimulatedStt, ...(groq ? { groq } : {}) },
+    answers: {
+      providers: answerProviders,
+      ledger: chatLedger,
+      maxAnswers: config.maxAnswersPerSession,
+      log: app.log,
+      maxTokens: { 'groq-120b': config.answerModels['groq-120b'].maxTokens, 'groq-20b': config.answerModels['groq-20b'].maxTokens },
+      stats: answerStats,
+    },
   });
 
   if (config.production) {

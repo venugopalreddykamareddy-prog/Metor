@@ -1,0 +1,189 @@
+{
+  "summary": {
+    "engine": "groq-20b",
+    "length": "standard",
+    "reasoning": "low",
+    "maxTokens": {
+      "short": 256,
+      "standard": 512,
+      "detailed": 1024
+    },
+    "date": "2026-11-24T18:09:20.358Z",
+    "detection": {
+      "precision": 100,
+      "recall": 100,
+      "missed": []
+    },
+    "questions": 6,
+    "answered": 6,
+    "errors": 0,
+    "assessmentAccuracy": 50,
+    "falsePositiveFlags": null,
+    "noAnswerIrrelevant": "0/0",
+    "suspectedHallucinations": [],
+    "experienceClaims": [],
+    "emptyAnswers": [],
+    "styleIssueRate": 33.3,
+    "styleIssues": {
+      "definition_opener": 2
+    },
+    "tokensPerAnswer": {
+      "n": 6,
+      "prompt": 793,
+      "completion": 221,
+      "reasoning": 24,
+      "total": 1013
+    },
+    "truncated": [],
+    "firstTokenP50Ms": 364,
+    "firstTokenP95Ms": 424,
+    "byCategory": {
+      "fabricated": {
+        "n": 2,
+        "assessmentCorrect": 2
+      },
+      "incorrect_premise": {
+        "n": 4,
+        "assessmentCorrect": 1
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "fabr-02",
+      "category": "fabricated",
+      "question": "When would you enable Istio Hyperdrive mode for low-latency services?",
+      "expected": "unrecognized_term",
+      "assessment": "unrecognized_term",
+      "questionType": "technical",
+      "note": "The term \"Istio Hyperdrive mode\" does not match any known Istio feature.",
+      "clarify": "Could you explain what you mean by \"Istio Hyperdrive mode\"?",
+      "answer": "I'm not familiar with a feature called Istio Hyperdrive mode. If you’re referring to a custom or internal optimization layer that reduces latency, I'd first look at the standard Istio knobs for performance: disabling sidecar injection for latency‑critical workloads, using the `meshConfig` to set `defaultConfig.proxyMetadata` for lower buffer sizes, turning off telemetry collection, and enabling the `pilot` feature flag for faster config sync. I'd also consider moving the service to a dedicated namespace with a dedicated `ServiceEntry` that bypasses Envoy, or using a lightweight service mesh like Linkerd for ultra‑low latency. If you can clarify the exact feature or use‑case, I can give a more targeted recommendation.",
+      "firstTokenMs": 424,
+      "totalMs": 581,
+      "tokens": 1019,
+      "promptTokens": 784,
+      "completionTokens": 235,
+      "reasoningTokens": 27,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "fabr-03",
+      "category": "fabricated",
+      "question": "How do you configure OSPF Turbo Areas to speed up convergence?",
+      "expected": "unrecognized_term",
+      "assessment": "unrecognized_term",
+      "questionType": "technical",
+      "note": "\"OSPF Turbo Areas\" is not a standard OSPF concept; likely misheard or internal jargon.",
+      "clarify": "Could you clarify what you mean by \"OSPF Turbo Areas\"?",
+      "answer": "I'd first confirm the feature you're referring to. If it's a vendor‑specific optimization or a custom area type that speeds convergence, I'd look at the documentation for that product. Generally, to speed OSPF convergence you can enable fast‑asynchronous updates, reduce hello intervals, or use stub or totally stubby areas to limit LSDB size. If you meant something like OSPF‑v3 or a proprietary acceleration, I'd check the vendor’s configuration guide and apply the recommended flags or timers.",
+      "firstTokenMs": 367,
+      "totalMs": 489,
+      "tokens": 977,
+      "promptTokens": 782,
+      "completionTokens": 195,
+      "reasoningTokens": 29,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "inco-01",
+      "category": "incorrect_premise",
+      "question": "Since UDP guarantees in-order delivery, why does DNS still need retries?",
+      "expected": "incorrect_premise",
+      "assessment": "incorrect_premise",
+      "questionType": "technical",
+      "note": "Incorrect premise – UDP does not guarantee in‑order delivery.",
+      "clarify": "none",
+      "answer": "UDP is a best‑effort protocol; it doesn't guarantee that packets arrive, that they arrive once, or that they arrive in the order sent. DNS queries are sent over UDP because they’re usually small and fast, but the network can drop or reorder packets. If the client never receives a reply, it has no way to know whether the server didn’t respond or the packet was lost, so it retries after a timeout. Even if the first packet arrives, the response could be corrupted or truncated, so the client will retry to get a complete answer. In practice, the DNS client will send the query twice or more, with exponential back‑off, and if that fails it falls back to TCP, which provides ordering and reliability. This retry logic ensures that a transient packet loss or corruption doesn’t make a name resolution fail.",
+      "firstTokenMs": 364,
+      "totalMs": 543,
+      "tokens": 1061,
+      "promptTokens": 792,
+      "completionTokens": 269,
+      "reasoningTokens": 56,
+      "truncated": false,
+      "error": null,
+      "style": [
+        "definition_opener"
+      ],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "inco-02",
+      "category": "incorrect_premise",
+      "question": "Because liveness probes remove a pod from Service endpoints, how would you use them for slow dependencies?",
+      "expected": "incorrect_premise",
+      "assessment": "none",
+      "questionType": "technical",
+      "note": "none",
+      "clarify": "none",
+      "answer": "I'd use liveness probes to detect when a pod is stuck waiting on a slow dependency, like a database or external API. The probe can be a simple HTTP GET or a custom script that tries to connect to the dependency. If the probe fails for a configured period, Kubernetes kills the pod so it can be restarted. I’d set the probe’s timeout to be shorter than the acceptable latency for that dependency, and the failure threshold to allow a few transient hiccups before killing. That way, a pod that hangs because the dependency is slow gets recycled, keeping the service healthy. If the dependency is known to be slow but acceptable, I’d use a readiness probe instead so the pod stays in the Service until the dependency is ready, but keep the liveness probe to catch hard hangs.",
+      "firstTokenMs": 264,
+      "totalMs": 427,
+      "tokens": 996,
+      "promptTokens": 798,
+      "completionTokens": 198,
+      "reasoningTokens": 9,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "inco-03",
+      "category": "incorrect_premise",
+      "question": "Given that the SLA is our internal target and the SLO is the customer contract, how should we set them?",
+      "expected": "incorrect_premise",
+      "assessment": "none",
+      "questionType": "technical",
+      "note": "none",
+      "clarify": "none",
+      "answer": "I’d start by mapping the customer contract SLO to a concrete metric—say 99.9% uptime over a month. Then I’d look at our internal SLA as the target we need to hit to satisfy that SLO. The SLA should be tighter than the SLO to give us a buffer for maintenance, incidents, and monitoring noise. For example, if the contract says 99.9% uptime, I’d set an internal SLA of 99.95% or 99.99% so that we have a safety margin. I’d also define the scope: which services, regions, and traffic types the SLA covers. Then I’d set up monitoring and alerting to track the SLA in real time, and create an incident response plan that triggers when we approach the SLA threshold. Finally, I’d review the SLA quarterly, adjust for any changes in traffic or architecture, and keep the SLO and SLA aligned so the customer sees consistent reliability.",
+      "firstTokenMs": 286,
+      "totalMs": 486,
+      "tokens": 1039,
+      "promptTokens": 801,
+      "completionTokens": 238,
+      "reasoningTokens": 12,
+      "truncated": false,
+      "error": null,
+      "style": [],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    },
+    {
+      "id": "inco-04",
+      "category": "incorrect_premise",
+      "question": "OSPF is a distance-vector protocol, so how does it avoid count-to-infinity?",
+      "expected": "incorrect_premise",
+      "assessment": "none",
+      "questionType": "technical",
+      "note": "none",
+      "clarify": "none",
+      "answer": "OSPF is a link‑state protocol, not distance‑vector, so the count‑to‑infinity problem doesn’t arise the way it does in RIP. Each router floods a Link State Advertisement (LSA) that lists its directly connected links and costs. Every router builds a full topology map from all LSAs, then runs Dijkstra’s algorithm to compute the shortest paths. Because every router has the same global view, there’s no iterative distance update that could loop. If a link fails, the router generates a new LSA, floods it, and all routers recompute their tables immediately. The flood and recomputation happen quickly, so the network never gets stuck in a divergent count‑to‑infinity state.",
+      "firstTokenMs": 255,
+      "totalMs": 418,
+      "tokens": 987,
+      "promptTokens": 798,
+      "completionTokens": 189,
+      "reasoningTokens": 11,
+      "truncated": false,
+      "error": null,
+      "style": [
+        "definition_opener"
+      ],
+      "suspectedHallucination": false,
+      "experienceClaims": []
+    }
+  ]
+}

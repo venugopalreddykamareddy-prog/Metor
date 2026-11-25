@@ -1,0 +1,132 @@
+import { useCallback, useRef, useState } from 'react';
+import type { AnswerHeader } from '../../../shared/answerFormat.ts';
+import type { AnswerEngine, AnswerLength, ClientMessageBody } from '../../../shared/messages.ts';
+import type { DetectedQuestion } from '../questions/tracker.ts';
+import type { AnswerMessage } from '../session/useRecorder.ts';
+import { contextTurns, earlierTopics, needsContext } from './grouping.ts';
+
+export interface AnswerCard {
+  questionId: string;
+  /** The detected question this answers (repeats and regenerations share it). */
+  sourceId: string;
+  question: string;
+  engine: AnswerEngine;
+  length: AnswerLength;
+  status: 'streaming' | 'done' | 'failed' | 'cancelled';
+  header: AnswerHeader | null;
+  text: string;
+  error: string | null;
+  model: string | null;
+  /** speech: detected from the transcript; typed: typed, merged or regenerated (no speech end). */
+  origin: 'speech' | 'typed';
+  /** When the question's sentence last changed (≈ speech end). */
+  spokenAt: number;
+  sentAt: number;
+  firstTextAt: number | null;
+  serverFirstTokenMs: number | null;
+  totalMs: number | null;
+  usage: { promptTokens: number; completionTokens: number; reasoningTokens: number | null } | null;
+  truncated: boolean;
+  cached: boolean;
+}
+
+const CONTEXT_TURNS = 3;
+// Earlier answers are trimmed: the model needs the gist, not the full text (fewer input tokens).
+const CONTEXT_ANSWER_CHARS = 600;
+// Matches the server's default MAX_ANSWERS_PER_SESSION, so a session's answers are all kept.
+const MAX_CARDS = 100;
+
+export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
+  const [cards, setCards] = useState<AnswerCard[]>([]);
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
+
+  const update = (questionId: string, fn: (c: AnswerCard) => AnswerCard) =>
+    setCards((cs) => cs.map((c) => (c.questionId === questionId ? fn(c) : c)));
+
+  const ask = useCallback(
+    (q: DetectedQuestion, engine: AnswerEngine, length: AnswerLength, fresh = false): boolean => {
+      const questionId = crypto.randomUUID();
+      // Earlier turns only when the question leans on them; never the whole transcript.
+      const withContext = needsContext(q.text, q.kind === 'follow_up');
+      const turns = withContext ? contextTurns(cardsRef.current, CONTEXT_TURNS, CONTEXT_ANSWER_CHARS) : [];
+      const earlier = withContext ? earlierTopics(cardsRef.current, CONTEXT_TURNS) : [];
+      const sent = send({
+        type: 'answer.request',
+        questionId,
+        question: q.text.slice(0, 1000),
+        ...(q.heard ? { heard: q.heard.slice(0, 1000) } : {}),
+        length,
+        engine,
+        statements: q.statements.slice(-5).map((s) => s.slice(0, 500)),
+        turns,
+        ...(earlier.length ? { earlier } : {}),
+        isFollowUp: q.kind === 'follow_up',
+        ...(fresh ? { fresh: true } : {}),
+      });
+      if (!sent) return false;
+      const now = Date.now();
+      const card: AnswerCard = {
+        questionId,
+        sourceId: q.repeatOf ?? q.id,
+        question: q.text,
+        engine,
+        length,
+        status: 'streaming',
+        header: null,
+        text: '',
+        error: null,
+        model: null,
+        origin: q.manual || fresh ? 'typed' : 'speech',
+        spokenAt: q.spokenAt,
+        sentAt: now,
+        firstTextAt: null,
+        serverFirstTokenMs: null,
+        totalMs: null,
+        usage: null,
+        truncated: false,
+        cached: false,
+      };
+      setCards((cs) => [...cs.slice(-(MAX_CARDS - 1)), card]);
+      return true;
+    },
+    [send],
+  );
+
+  const cancel = useCallback((questionId: string) => send({ type: 'answer.cancel', questionId }), [send]);
+
+  const handleMessage = useCallback((msg: AnswerMessage) => {
+    switch (msg.type) {
+      case 'answer.header':
+        update(msg.questionId, (c) => ({
+          ...c,
+          header: { questionType: msg.questionType, assessment: msg.assessment, note: msg.note, clarify: msg.clarify },
+        }));
+        break;
+      case 'answer.delta':
+        update(msg.questionId, (c) => ({ ...c, text: c.text + msg.text, firstTextAt: c.firstTextAt ?? Date.now() }));
+        break;
+      case 'answer.done':
+        update(msg.questionId, (c) => ({
+          ...c,
+          status: 'done',
+          text: c.text.trim(),
+          model: msg.model,
+          serverFirstTokenMs: msg.firstTokenMs,
+          totalMs: msg.totalMs,
+          usage: msg.usage,
+          truncated: msg.truncated,
+          cached: msg.cached,
+        }));
+        break;
+      case 'answer.failed':
+        update(msg.questionId, (c) => ({ ...c, status: msg.code === 'cancelled' ? 'cancelled' : 'failed', error: msg.message }));
+        break;
+    }
+  }, []);
+
+  /** Answer timings for the debug line: speech end → first word, spoken questions only. */
+  const latencies = cards.flatMap((c) => (c.origin === 'speech' && c.firstTextAt ? [c.firstTextAt - c.spokenAt] : []));
+
+  return { cards, ask, cancel, handleMessage, latencies };
+}

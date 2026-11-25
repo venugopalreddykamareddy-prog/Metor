@@ -39,6 +39,9 @@ jobs:
       - name: Unit and integration tests
         run: pnpm test
 
+      - name: Answer evaluation (simulated engine, no network)
+        run: pnpm eval:answers --check
+
       - name: Build
         run: pnpm build
 

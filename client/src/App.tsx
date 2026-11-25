@@ -1,15 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import { fetchMe, logout, type Me } from './api.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AnswerEngine, AnswerLength } from '../../shared/messages.ts';
+import { fetchMe, fetchUsage, logout, type Me, type Usage } from './api.ts';
+import { groupAnswers } from './answers/grouping.ts';
+import { useAnswers, type AnswerCard } from './answers/useAnswers.ts';
+import type { DetectedQuestion } from './questions/tracker.ts';
+import { useQuestions } from './questions/useQuestions.ts';
 import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTranscript.ts';
 import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
-import { useRecorder, type TranscriptionMode } from './session/useRecorder.ts';
+import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
+import { load, save, useAnswerDisplay, useSetting } from './settings.ts';
+import { leftToday, preferredMode, whisperQuotaLeft } from './session/transcriptionMode.ts';
 import { speechRecognitionCtor } from './stt/webspeech.ts';
 import { AccuracyCheck } from './ui/AccuracyCheck.tsx';
+import { AnswersPanel } from './ui/AnswersPanel.tsx';
+import { FocusView } from './ui/FocusView.tsx';
+import { QuestionsPanel } from './ui/QuestionsPanel.tsx';
 import { ConsentDialog } from './ui/ConsentDialog.tsx';
 import { Login } from './ui/Login.tsx';
 import { StatusBar } from './ui/StatusBar.tsx';
 import { TranscriptPane } from './ui/TranscriptPane.tsx';
+import { Workspace } from './ui/Workspace.tsx';
 
 export function App() {
   const [me, setMe] = useState<Me | null | 'checking'>('checking');
@@ -33,16 +44,11 @@ const MODE_LABEL: Record<TranscriptionMode, string> = {
   webspeech: 'Browser speech',
   groq: 'Groq Whisper',
 };
-const MODE_KEY = 'metor.mode';
-
-function savedMode(): TranscriptionMode | null {
-  try {
-    const value = localStorage.getItem(MODE_KEY);
-    return value === 'simulated' || value === 'webspeech' || value === 'groq' ? value : null;
-  } catch {
-    return null;
-  }
-}
+const ENGINE_LABEL: Record<AnswerEngine, string> = {
+  simulated: 'Simulated (not AI)',
+  'groq-120b': 'Groq GPT-OSS 120B',
+  'groq-20b': 'Groq GPT-OSS 20B (fast mode)',
+};
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -50,15 +56,36 @@ function median(values: number[]): number {
 }
 
 function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
-  const recorder = useRecorder(onLoggedOut);
+  const answerHandler = useRef<(msg: AnswerMessage) => void>(() => {});
+  const recorder = useRecorder(onLoggedOut, (msg) => answerHandler.current(msg));
+  const answers = useAnswers(recorder.send);
+  answerHandler.current = answers.handleMessage;
+
   const available: TranscriptionMode[] = [
     'simulated',
     ...(speechRecognitionCtor() ? (['webspeech'] as const) : []),
     ...(me.providers.groq ? (['groq'] as const) : []),
   ];
-  const saved = savedMode();
-  const [mode, setMode] = useState<TranscriptionMode>(saved && available.includes(saved) ? saved : 'simulated');
+  // GPT-OSS 120B (medium reasoning) is the default for accuracy; 20B is the optional fast mode.
+  const engines: AnswerEngine[] = me.providers.groq ? ['groq-120b', 'groq-20b', 'simulated'] : ['simulated'];
+  const [engine, setEngine] = useSetting<AnswerEngine>('answerModel', engines, engines[0] ?? 'simulated');
+  const [length, setLength] = useSetting<AnswerLength>('length', ['short', 'standard', 'detailed'], 'standard');
+  const [autoAnswer, setAutoAnswer] = useSetting<'on' | 'off'>('autoAnswer', ['on', 'off'], 'on');
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [focus, setFocus] = useState(false);
+  const { display, setFontSize, setLineSpacing } = useAnswerDisplay();
   const [askingConsent, setAskingConsent] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  // A mode the user picked is kept; otherwise Groq Whisper within its free quota, then Browser speech.
+  const [picked, setPicked] = useState<TranscriptionMode | null>(() => {
+    const stored = load('mode');
+    return available.find((m) => m === stored) ?? null;
+  });
+  const mode = picked !== null && available.includes(picked) ? picked : preferredMode(available, whisperQuotaLeft(usage));
+  const setMode = (m: TranscriptionMode) => {
+    setPicked(m);
+    save('mode', m);
+  };
   const corrections = useCorrections();
   // Hand edits of single sentences, for the current recording only.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -72,19 +99,45 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       }),
     [recorder.transcript, corrections.replacements, overrides],
   );
+
+  const questions = useQuestions(clean, autoAnswer === 'on', (q) => answers.ask(q, engine, length));
+  /** Always a new request (skips the answer cache); optionally with another engine. */
+  const regenerate = (card: AnswerCard, withEngine?: AnswerEngine) => {
+    const q: DetectedQuestion = {
+      id: card.sourceId,
+      text: card.question,
+      kind: 'question',
+      status: 'answered',
+      statements: [],
+      spokenAt: Date.now(),
+      firstSeenAt: Date.now(),
+    };
+    answers.ask(q, withEngine ?? engine, length, true);
+  };
+
+  // One entry per question; regenerated answers are kept as versions (grouping.ts).
+  const repeats = questions.questions.flatMap((q) => (q.repeatOf ? [{ sourceId: q.repeatOf, at: q.firstSeenAt }] : []));
+  const groups = useMemo(() => groupAnswers(answers.cards, repeats), [answers.cards, repeats.map((r) => `${r.sourceId}@${r.at}`).join()]);
+  const latest = groups.at(-1) ?? null;
+  const pending =
+    questions.questions.filter((q) => (q.status === 'waiting' || q.status === 'ready') && q.firstSeenAt > (latest?.lastActivity ?? 0)).at(-1)
+      ?.text ?? null;
+  const displayProps = { display, onFontSize: setFontSize, onLineSpacing: setLineSpacing };
+
+  // Free-tier usage, refreshed now and then and after each finished answer.
+  const doneCount = answers.cards.filter((c) => c.status === 'done').length;
+  useEffect(() => {
+    if (!me.providers.groq) return;
+    const refresh = () => void fetchUsage().then(setUsage, () => setUsage(null));
+    refresh();
+    const timer = setInterval(refresh, 30_000);
+    return () => clearInterval(timer);
+  }, [me.providers.groq, doneCount]);
   const micOpen = phase === 'recording' || phase === 'paused';
   const activeMode = recorder.mode ?? mode;
   // Web Speech doesn't need the WebSocket; server modes do.
   const canStart = phase === 'idle' && (mode === 'webspeech' || connection === 'connected');
 
-  const chooseMode = (value: TranscriptionMode) => {
-    setMode(value);
-    try {
-      localStorage.setItem(MODE_KEY, value);
-    } catch {
-      // Private browsing etc.: the choice just isn't remembered.
-    }
-  };
 
   const onLogout = async () => {
     recorder.stop();
@@ -108,7 +161,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       <div className="controls">
         <label className="mode">
           Transcription
-          <select value={mode} onChange={(e) => chooseMode(e.target.value as TranscriptionMode)} disabled={phase !== 'idle'}>
+          <select value={mode} onChange={(e) => setMode(e.target.value as TranscriptionMode)} disabled={phase !== 'idle'}>
             {available.map((m) => (
               <option key={m} value={m}>
                 {MODE_LABEL[m]}
@@ -154,31 +207,141 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
               }`}
           {latencies.length > 0 &&
             ` · final latency p50 ${(median(latencies) / 1000).toFixed(2)} s (n=${latencies.length})`}
+          {answers.latencies.length > 0 &&
+            ` · speech end → first answer word p50 ${(median(answers.latencies) / 1000).toFixed(2)} s (n=${answers.latencies.length})`}
         </p>
       )}
 
-      {recorder.error && <p role="alert" className="error">{recorder.error}</p>}
+      <div className="settings" aria-label="Answer settings">
+        <label>
+          Answers
+          <select value={engine} onChange={(e) => setEngine(e.target.value as AnswerEngine)}>
+            {engines.map((e) => (
+              <option key={e} value={e}>
+                {ENGINE_LABEL[e]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Length
+          <select value={length} onChange={(e) => setLength(e.target.value as AnswerLength)}>
+            <option value="short">Short (~30 s)</option>
+            <option value="standard">Standard (~1 min)</option>
+            <option value="detailed">Detailed (2–3 min)</option>
+          </select>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={autoAnswer === 'on'} onChange={(e) => setAutoAnswer(e.target.checked ? 'on' : 'off')} />
+          Answer automatically
+        </label>
+        <button type="button" aria-pressed={!autoScroll} onClick={() => setAutoScroll(!autoScroll)}>
+          {autoScroll ? 'Pause scrolling' : 'Resume scrolling'}
+        </button>
+        {engine === 'simulated' ? (
+          <span className="muted" data-testid="engine-note">
+            Simulated answers are canned placeholders for testing, not AI output.
+          </span>
+        ) : (
+          <span className="muted" data-testid="engine-note">
+            AI-generated by an open-weight model on Groq (free tier). Questions and recent answers are sent to Groq. Check answers before
+            relying on them.
+          </span>
+        )}
+        {usage?.groq && (
+          <span className="muted" data-testid="usage">
+            Groq free tier left today: transcription {(leftToday(usage.groq.transcription).units / 60).toFixed(0)} min of audio ·{' '}
+            {leftToday(usage.groq.transcription).requests} requests; answers {leftToday(usage.groq.answers).requests} requests ·{' '}
+            {(leftToday(usage.groq.answers).units / 1000).toFixed(1)}k tokens
+            {(() => {
+              const t = usage.answerTokens?.[engine];
+              const avg = t?.averagePerAnswer.total;
+              return avg ? ` · ${avg} tokens per answer on average (n=${t.withUsage}${t.cached ? `, ${t.cached} from cache` : ''})` : '';
+            })()}
+          </span>
+        )}
+      </div>
 
-      <TranscriptPane
-        transcript={recorder.transcript}
-        clean={clean}
-        label={MODE_LABEL[activeMode]}
-        replacements={corrections.replacements}
-        onClear={() => {
-          recorder.clear();
-          setOverrides({});
-        }}
-        onEditSentence={(key, text) => setOverrides((o) => ({ ...o, [key]: text }))}
-        onAddCorrection={corrections.add}
-        onRemoveCorrection={corrections.remove}
-      />
+      {recorder.error && (
+        <p role="alert" className="error">
+          {recorder.error}
+          {recorder.quotaExhausted && activeMode === 'groq' && available.includes('webspeech') && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => {
+                  // Never switched automatically: stop, then ask consent for the other provider.
+                  recorder.stop();
+                  setMode('webspeech');
+                  setAskingConsent(true);
+                }}
+              >
+                Switch to Browser speech
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
-      <AccuracyCheck
-        rawText={transcriptText(recorder.transcript)}
-        cleanText={cleanTranscriptText(clean)}
-        mode={MODE_LABEL[activeMode]}
-        latencies={latencies}
-      />
+      {focus && (
+        <FocusView
+          latest={latest}
+          pending={pending}
+          {...displayProps}
+          onCancel={answers.cancel}
+          onRegenerate={regenerate}
+          onExit={() => setFocus(false)}
+        />
+      )}
+      <div hidden={focus}>
+        <Workspace
+          transcript={(onCollapse) => (
+            <TranscriptPane
+              transcript={recorder.transcript}
+              autoScroll={autoScroll}
+              clean={clean}
+              label={MODE_LABEL[activeMode]}
+              replacements={corrections.replacements}
+              onClear={() => {
+                recorder.clear();
+                setOverrides({});
+              }}
+              onEditSentence={(key, text) => setOverrides((o) => ({ ...o, [key]: text }))}
+              onAddCorrection={corrections.add}
+              onRemoveCorrection={corrections.remove}
+              onCollapse={onCollapse}
+            />
+          )}
+          questions={(onCollapse) => (
+            <QuestionsPanel
+              questions={questions.questions}
+              onAnswer={questions.answer}
+              onDismiss={questions.dismiss}
+              onMerge={questions.mergeWithPrevious}
+              onAsk={questions.ask}
+              onCollapse={onCollapse}
+            />
+          )}
+          answers={
+            <AnswersPanel
+              groups={groups}
+              autoScroll={autoScroll}
+              onCancel={answers.cancel}
+              onRegenerate={regenerate}
+              onFocus={() => setFocus(true)}
+              {...displayProps}
+            />
+          }
+        />
+
+        <AccuracyCheck
+          rawText={transcriptText(recorder.transcript)}
+          cleanText={cleanTranscriptText(clean)}
+          mode={MODE_LABEL[activeMode]}
+          latencies={latencies}
+        />
+      </div>
 
       {askingConsent && (
         <ConsentDialog
@@ -187,6 +350,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           onConfirm={() => {
             setAskingConsent(false);
             setOverrides({});
+            questions.reset(); // sentence keys restart with each recording
             void recorder.start(mode);
           }}
         />

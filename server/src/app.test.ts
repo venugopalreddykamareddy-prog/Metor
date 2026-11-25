@@ -34,6 +34,7 @@ async function makeApp(
   const app = await buildApp(config, {
     ...(logStream ? { logStream } : { logger: false }),
     ...(groqFetch ? { groqFetch } : {}),
+    simulatedAnswerDelayMs: 0,
   });
   await app.ready();
   apps.push(app);
@@ -380,6 +381,138 @@ describe('message validation', () => {
     expect(log).toContain('invalid ws message');
     expect(log).toContain('login failed');
     expect(log).not.toMatch(/secret|test passphrase|metor_session=/);
+  });
+});
+
+describe('answers', () => {
+  const ask = (overrides: Record<string, unknown> = {}) => ({
+    type: 'answer.request',
+    questionId: crypto.randomUUID(),
+    question: 'How does BGP choose the best path?',
+    length: 'short',
+    engine: 'simulated',
+    statements: [],
+    turns: [],
+    isFollowUp: false,
+    ...overrides,
+  });
+
+  it('streams a header, answer text, and done with timings', async () => {
+    const app = await makeApp();
+    const conn = await connect(app, await loginCookie(app));
+    const req = ask();
+    conn.sendJson(req);
+    const done = await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === req.questionId);
+    expect(done).toMatchObject({ model: 'simulated', firstTokenMs: expect.any(Number), totalMs: expect.any(Number) });
+    const header = conn.messages.find((m) => m.type === 'answer.header');
+    expect(header).toMatchObject({ questionId: req.questionId, questionType: 'technical', assessment: 'none' });
+    const text = conn.messages.filter((m) => m.type === 'answer.delta').map((m) => m.text).join('');
+    expect(text).toContain('[Simulated placeholder, not an AI answer.]');
+    expect(conn.messages.findIndex((m) => m.type === 'answer.header')).toBeLessThan(conn.messages.findIndex((m) => m.type === 'answer.delta'));
+    conn.ws.terminate();
+  });
+
+  it('rejects a repeated questionId, an unconfigured engine, and too many answers', async () => {
+    const app = await makeApp({ maxAnswersPerSession: 2 });
+    const conn = await connect(app, await loginCookie(app));
+    const first = ask();
+    conn.sendJson(first);
+    await conn.waitFor((m) => m.type === 'answer.done');
+    conn.sendJson({ ...first, id: 'again' });
+    await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'duplicate');
+    conn.sendJson(ask({ engine: 'groq-120b' }));
+    await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'provider_unavailable');
+    conn.sendJson(ask({ question: 'How does OSPF build its routing table?' }));
+    await conn.waitFor((m) => m.type === 'answer.done' && m !== conn.messages.find((x) => x.type === 'answer.done'));
+    conn.sendJson(ask({ question: 'What is an error budget?' }));
+    await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'limit_reached');
+    conn.ws.terminate();
+  });
+
+  it('reuses a cached answer for the same question and context, unless fresh is set', async () => {
+    const app = await makeApp({ maxAnswersPerSession: 2 });
+    const conn = await connect(app, await loginCookie(app));
+    const first = ask();
+    conn.sendJson(first);
+    const done1 = await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === first.questionId);
+    expect(done1).toMatchObject({ cached: false });
+
+    const again = ask({ question: 'how does BGP choose the best path' }); // same words, different punctuation
+    conn.sendJson(again);
+    const done2 = await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === again.questionId);
+    expect(done2).toMatchObject({ cached: true, usage: null });
+    const text = (id: string) => conn.messages.filter((m) => m.type === 'answer.delta' && m.questionId === id).map((m) => m.text).join('').trim();
+    expect(text(again.questionId)).toBe(text(first.questionId));
+
+    // Different context → a new request; fresh (Regenerate) → a new request too.
+    const withContext = ask({ turns: [{ question: 'What is BGP?', answer: 'A routing protocol.' }] });
+    conn.sendJson(withContext);
+    expect(await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === withContext.questionId)).toMatchObject({ cached: false });
+    const fresh = ask({ fresh: true });
+    conn.sendJson(fresh);
+    // The session limit (2) is reached, which proves fresh skipped the cache.
+    await conn.waitFor((m) => m.type === 'answer.failed' && m.questionId === fresh.questionId && m.code === 'limit_reached');
+    conn.ws.terminate();
+  });
+
+  it('cancels on request, and a new question replaces the one in flight', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const slowGroq = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const enc = new TextEncoder();
+          controller.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"ANSWER:\\nThinking"}}]}\n\n'));
+          await gate;
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200 });
+    }) as unknown as typeof fetch;
+    const dir = await mkdtemp(join(tmpdir(), 'metor-answers-'));
+    try {
+      const app = await makeApp({ groq: { apiKey: 'k', model: 'whisper-large-v3-turbo' }, usageLedgerPath: join(dir, 'l.json') }, undefined, slowGroq);
+      const conn = await connect(app, await loginCookie(app));
+      const a = ask({ engine: 'groq-20b' });
+      conn.sendJson(a);
+      await conn.waitFor((m) => m.type === 'answer.delta' && m.questionId === a.questionId);
+      conn.sendJson({ type: 'answer.cancel', questionId: a.questionId });
+      await conn.waitFor((m) => m.type === 'answer.failed' && m.questionId === a.questionId && m.code === 'cancelled');
+
+      const b = ask({ engine: 'groq-120b' });
+      conn.sendJson(b);
+      await conn.waitFor((m) => m.type === 'answer.delta' && m.questionId === b.questionId);
+      const c = ask();
+      conn.sendJson(c);
+      await conn.waitFor((m) => m.type === 'answer.failed' && m.questionId === b.questionId && m.code === 'cancelled');
+      await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === c.questionId);
+
+      const usage = await app.inject({ method: 'GET', url: '/api/usage', headers: { cookie: (await loginCookie(app)) } });
+      expect(usage.json().groq.answers.lastMinute.requests).toBe(2);
+      conn.ws.terminate();
+    } finally {
+      release();
+      await Promise.all(apps.splice(0).map((x) => x.close()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a Groq answer when the local free-tier token budget is used up', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'metor-answers-'));
+    try {
+      const app = await makeApp(
+        { groq: { apiKey: 'k', model: 'whisper-large-v3-turbo' }, usageLedgerPath: join(dir, 'l.json'), freeQuotaRatio: 0.1 },
+        undefined,
+        (async () => new Response('should not be called', { status: 500 })) as unknown as typeof fetch,
+      );
+      const conn = await connect(app, await loginCookie(app));
+      conn.sendJson(ask({ engine: 'groq-120b', length: 'detailed' })); // ~1,900 tokens > 800 allowed per minute
+      await conn.waitFor((m) => m.type === 'answer.failed' && m.code === 'quota_exhausted');
+      conn.ws.terminate();
+    } finally {
+      await Promise.all(apps.splice(0).map((x) => x.close()));
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

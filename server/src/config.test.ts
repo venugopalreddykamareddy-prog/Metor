@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hashPassphrase } from './auth/passphrase.ts';
-import { buildAllowedOrigins, loadConfig } from './config.ts';
+import { buildAllowedOrigins, loadConfig, parseAnswerMaxTokens } from './config.ts';
 
 let APP_PASSPHRASE_HASH: string;
 beforeAll(async () => {
@@ -23,9 +23,7 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ APP_PASSPHRASE_HASH: 'nope' })).toThrow(/malformed/);
   });
 
-  it('keeps answers simulated and refuses paid providers', () => {
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'simulated' })).not.toThrow();
-    expect(() => loadConfig({ APP_PASSPHRASE_HASH, ANSWER_PROVIDER: 'gemini' })).toThrow(/not available yet/);
+  it('refuses paid providers', () => {
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, ALLOW_PAID_PROVIDERS: 'true' })).toThrow(/must be false/);
   });
 
@@ -38,8 +36,13 @@ describe('loadConfig', () => {
   });
 
   it('reads limits and rejects bad numbers', () => {
-    const c = loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '30', FREE_QUOTA_SAFETY_RATIO: '0.5' });
-    expect(c).toMatchObject({ maxTranscriptionMs: 30 * 60_000, freeQuotaRatio: 0.5 });
+    const c = loadConfig({
+      APP_PASSPHRASE_HASH,
+      MAX_TRANSCRIPTION_MINUTES: '30',
+      FREE_QUOTA_SAFETY_RATIO: '0.5',
+      MAX_ANSWERS_PER_SESSION: '20',
+    });
+    expect(c).toMatchObject({ maxTranscriptionMs: 30 * 60_000, freeQuotaRatio: 0.5, maxAnswersPerSession: 20 });
     expect(() => loadConfig({ APP_PASSPHRASE_HASH, MAX_TRANSCRIPTION_MINUTES: '-1' })).toThrow(/Invalid/);
   });
 
@@ -63,5 +66,26 @@ describe('buildAllowedOrigins', () => {
     expect(origins.has('https://cs-5173.app.github.dev')).toBe(true);
     expect(origins.has('https://a.example')).toBe(true);
     expect(origins.has('')).toBe(false);
+  });
+});
+
+describe('answer token budgets', () => {
+  it('defaults to 120B with medium reasoning and room for it, and 20B fast mode with low reasoning', async () => {
+    const config = loadConfig({ APP_PASSPHRASE_HASH: await hashPassphrase('x') });
+    expect(config.answerModels).toEqual({
+      'groq-120b': { effort: 'medium', maxTokens: { short: 1000, standard: 1400, detailed: 2200 } },
+      'groq-20b': { effort: 'low', maxTokens: { short: 256, standard: 512, detailed: 1024 } },
+    });
+    const custom = loadConfig({ APP_PASSPHRASE_HASH: await hashPassphrase('x'), ANSWER_REASONING_EFFORT: 'high', ANSWER_MAX_TOKENS: '1200,1600,2600' });
+    expect(custom.answerModels['groq-120b']).toEqual({ effort: 'high', maxTokens: { short: 1200, standard: 1600, detailed: 2600 } });
+  });
+
+  it('defaults to 256, 512 and 1024 and accepts an override', () => {
+    expect(parseAnswerMaxTokens(undefined)).toEqual({ short: 256, standard: 512, detailed: 1024 });
+    expect(parseAnswerMaxTokens('300, 600, 1200')).toEqual({ short: 300, standard: 600, detailed: 1200 });
+  });
+
+  it('rejects malformed values', () => {
+    for (const bad of ['512', '256,512', '1,2,3', '256,abc,1024', '256,512,99999']) expect(() => parseAnswerMaxTokens(bad)).toThrow();
   });
 });

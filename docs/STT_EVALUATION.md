@@ -10,7 +10,7 @@ How Browser speech and Groq Whisper compare on my voice, for SRE, Kubernetes, ne
 4. Press Stop, then **Score transcript**. Clear the transcript and repeat for the other mode.
 5. Copy the rows into the table below with the date, browser, and mic.
 
-The script has 10 sentences and 33 technical terms. It can be edited in the panel; keep the same text for runs you compare.
+The script has 10 sentences and 34 technical terms. It can be edited in the panel; keep the same text for runs you compare.
 
 ## What the numbers mean
 
@@ -22,6 +22,10 @@ The script has 10 sentences and 33 technical terms. It can be edited in the pane
 
 ## Results
 
+**2026-11-25:** the owner ran the accuracy script in both modes (last two rows). Groq Whisper is clearly better on this voice and vocabulary: about a third of Browser speech's word error rate, 26 vs 18–20 terms, and lower final latency (the two latencies measure different things, see above). Metor now preselects Groq Whisper when it's configured and within its free quota, with Browser speech as the fallback; each still needs the consent dialog (ADR-011 amendment).
+
+**Term-recall fix after this run:** the scorer treated `-` and `/` as part of a word, so a term written next to one ("Terraform-managed", "Terraform/Helm", or a "Terraform-" cut at a segment boundary) counted as missed. The exact transcript wasn't kept (no persistence), so which form it was is not confirmed. Terms now also split at `-` and `/`; matching stays whole-word, so p95 ≠ p99 and AKS ≠ EKS (unit tests). The numbers above were scored before the fix and are kept as measured; Groq's term count may be one higher on a re-score.
+
 **Status when Phase 3 merged (2026-11-24):** finalization latency measured three times by the owner (below). **Accuracy (word error rate, term recall) has not been measured for either mode, and Groq transcription has not been tried live.** These stay open and are now part of Phase 4's acceptance list. Real runs need a real voice and mic, which CI and the Codespace can't provide.
 
 | Date | Mode | Browser / mic | WER raw | WER clean | Terms raw | Terms clean | Final latency p50 | Notes |
@@ -29,7 +33,9 @@ The script has 10 sentences and 33 technical terms. It can be edited in the pane
 | 2026-11-24 | Browser speech | Chrome / owner's mic | — | — | — | — | 0.45 s (n=6) | Owner's first manual test: recognition works; fragmented, no capitals or punctuation. Accuracy script not run yet. |
 | 2026-11-24 | Browser speech (clean view) | Chrome / owner's mic | — | — | — | — | 0.44 s (n=6) | Sentence merging and term recognition improved; several questions spoken in a row merge into one paragraph (to be handled by Phase 4 question extraction). Accuracy script not run yet. |
 | 2026-11-24 | Browser speech (clean view) | Chrome / owner's mic | — | — | — | — | 0.30 s (n=6) | Third manual test. Observations moved to Phase 4 acceptance: requests without "?", incomplete phrases, superseded questions, rapid topic changes, repeats, ambiguous acronyms. |
-| | Groq Whisper | | | | | | | |
+| 2026-11-24 | Real speech (mode not recorded) | Owner's browser / mic | — | — | — | — | 0.48 s (n=2) | Fourth manual test, Phase 4 work in progress: question extraction, separate panels and automatic simulated answers worked. Speech end → first answer word median 1.06 s with **simulated** answers; not a Groq answer measurement. Accuracy script not run yet. |
+| 2026-11-25 | Browser speech | Chrome / owner's mic | 30.1% | 28.2% | 18/34 | 20/34 | 0.47 s | Owner's accuracy-script run. No punctuation: the first question merged with the answer read after it (now an extraction regression case, ext-31). |
+| 2026-11-25 | Groq Whisper | Chrome / owner's mic | 10.9% | 10.9% | 26/34 | 26/34 | 0.35 s | Same script and mic. Punctuation separated the questions. Terraform was marked missed although it appeared in the transcript (see below). |
 
 ## Known behaviour to watch for
 

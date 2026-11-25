@@ -26,4 +26,19 @@ describe('termRecall', () => {
     const result = termRecall('Use kubectl on AKS with BGP.', 'use cube cuddle on AKS with BGP');
     expect(result).toEqual({ found: ['AKS', 'BGP'], missed: ['kubectl'] });
   });
+
+  it('finds Terraform next to a hyphen or slash (the term the accuracy check marked missed)', () => {
+    for (const hyp of ['We manage EKS with Terraform-managed modules', 'EKS with Terraform/Helm', 'EKS clusters with Terraform-', 'EKS clusters with Terraform, and Argo CD']) {
+      expect(termRecall('We manage EKS clusters with Terraform.', hyp).missed, hyp).toEqual([]);
+    }
+  });
+
+  it('keeps p95/p99 and AKS/EKS distinct', () => {
+    expect(termRecall('Alert on p99 latency for AKS.', 'alert on p95 latency for EKS')).toEqual({ found: [], missed: ['p99', 'AKS'] });
+    expect(termRecall('p95 and p99 on AKS and EKS', 'p95/p99 on AKS/EKS').missed).toEqual([]);
+  });
+
+  it('still counts multi-word and slashed terms', () => {
+    expect(termRecall('Deploy with CI/CD and Argo CD.', 'deploy with CI/CD and Argo CD').missed).toEqual([]);
+  });
 });

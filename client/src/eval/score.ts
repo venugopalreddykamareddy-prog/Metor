@@ -26,14 +26,21 @@ export function wordErrorRate(reference: string, hypothesis: string): number {
   return (prev[hyp.length] ?? 0) / ref.length;
 }
 
+/**
+ * Words for term matching: "-" and "/" also separate words, so "Terraform-managed", "Terraform/Helm"
+ * or a "Terraform-" cut at a chunk boundary still count. Whole words only: p95 never matches p99,
+ * nor AKS EKS.
+ */
+const termWords = (text: string) => ` ${words(text).join(' ').replace(/[-/]+/g, ' ').replace(/\s+/g, ' ')} `;
+
 /** Which technical terms in the reference also appear in the hypothesis (case-insensitive). */
 export function termRecall(reference: string, hypothesis: string): { found: string[]; missed: string[] } {
-  const ref = ` ${words(correctTerms(reference)).join(' ')} `;
-  const hyp = ` ${words(hypothesis).join(' ')} `;
+  const ref = termWords(correctTerms(reference));
+  const hyp = termWords(hypothesis);
   const found: string[] = [];
   const missed: string[] = [];
   for (const term of TECH_TERMS) {
-    const needle = ` ${words(term).join(' ')} `;
+    const needle = termWords(term);
     if (!ref.includes(needle)) continue;
     (hyp.includes(needle) ? found : missed).push(term);
   }

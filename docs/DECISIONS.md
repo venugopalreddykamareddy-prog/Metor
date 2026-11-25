@@ -180,6 +180,8 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No new dependencies. Web Speech can't be tested headlessly, so Playwright drives a fake `SpeechRecognition`. Real accuracy depends on the user's voice and mic, so the comparison needs a manual run. Groq is never called in CI.
 
+**Amended 2026-11-25 (owner's benchmark, docs/STT_EVALUATION.md):** Groq Whisper beat Browser speech on the accuracy script (WER 10.9% vs 30.1% raw, terms 26/34 vs 18/34, latency 0.35 s vs 0.47 s). When the user hasn't picked a mode, Metor now preselects Groq Whisper if `GROQ_API_KEY` is set and today's transcription ledger has room, otherwise Browser speech; without Groq it stays Simulated. A picked mode is remembered and wins. Nothing switches on its own: if Groq's quota runs out while recording, the error offers "Switch to Browser speech", which stops recording and opens the consent dialog for the new provider. Transcription quota (audio seconds) and answer quota (tokens) are separate ledgers and are shown separately.
+
 ---
 
 ## ADR-012: Keep the raw transcript; derive a clean one locally
@@ -213,3 +215,29 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No change to the $0 default. Answer quality starts with open-weight models on Groq, and the evaluation set (docs/ANSWER_EVALUATION.md) shows whether that's good enough before any paid option is considered.
 
+**Amended 2026-11-25 (owner's decision, after checking official docs; nothing built):**
+- **Groq stays the primary provider** for answers and transcription (Groq Whisper first, Browser speech as the consented fallback).
+- **ChatGPT plan usage ("Sign in with ChatGPT") is deferred** until Metor is officially eligible. OpenAI's docs say it's "currently offered to a select group of commercial partners" (waitlist). On a remote VM, OAuth has to finish on the user's own machine and the credential file is then copied over, which conflicts with the no-local-install rule. Plus has a five-hour usage limit shared with ChatGPT.
+- **Gemini free tier is an optional future provider, for practice only.** It needs its own quota ledger and token tracking, explicit consent before switching, and no resume, KB or other confidential content: unpaid input may be used to improve Google products and read by human reviewers. It must never fall back to a paid tier; linking billing to the project upgrades it to paid automatically. Not for users in the EEA, Switzerland or the UK. Free-tier rate limits appear only in AI Studio, and model IDs change often (e.g. `gemini-2.5-flash` routes to another model from 2026-12-01), so model IDs and limits must be re-checked when it's built (ADR-009).
+
+
+---
+
+## ADR-014: Answer checking — medium reasoning effort and NOTE before ASSESSMENT
+
+**Status:** Accepted · 2026-11-24 (Phase 4)
+
+**Context:** The first live Groq runs (`openai/gpt-oss-120b`, `reasoning_effort: low`) answered a made-up "Istio Hyperdrive mode" as if it existed and labeled every wrong-premise question in a small sample `none`. One answer even stated the premise was wrong in NOTE while ASSESSMENT said `none`. With label options separated by `|` in the prompt, one reply wrote the whole header on one line.
+
+**Decision:**
+1. The prompt asks the model to list, in its hidden reasoning, every named product, feature, command and built-in claim and check each one before writing the header. An unknown feature must not be described or used as if it exists.
+2. Header order is TYPE, NOTE, ASSESSMENT, CLARIFY, ANSWER: the model names the problem before choosing the label. The prompt shows one field per line with placeholders, not `a | b | c`. The parser accepts the one-line `|` form and either field order.
+3. `reasoning_effort` defaults to `medium`. On the same six fabricated/wrong-premise questions, low caught 0 of 4 wrong premises and medium 2–3 of 4 (it varies between runs), for about 0.2–0.5 s more to the first word. It stays configurable (`createGroqAnswer({ reasoningEffort })`, `pnpm eval:answers --reasoning`).
+
+4. Completion budgets rise to 1,000 / 1,400 / 2,200 tokens (short / standard / detailed): at 1,000, one standard answer spent everything on hidden reasoning and came back empty. An answer with no text is reported as a failure. The ledger reserves prompt + budget up front, so two standard answers in a row (~2.9K each) still fit 80% of the 8K tokens/minute limit.
+
+**Amended 2026-11-24 (token optimization, owner's decision):** defaults are now GPT-OSS 20B with `reasoning_effort: low` and completion budgets 256 / 512 / 1024, configurable with `ANSWER_REASONING_EFFORT` and `ANSWER_MAX_TOKENS`; 120B stays selectable and has a per-answer "Regenerate with 120B". The system prompt was shortened from 6.5K to 3.0K characters with the same rules. Measured on the same questions: ~2.0K → ~1.0K tokens per answer and a ~3× faster first word, but weaker wrong-premise detection (1/4 vs 2/4) and invented alternatives after "not familiar" on two made-up features (docs/ANSWER_EVALUATION.md). Points 3 and 4 above describe the previous defaults.
+
+**Amended again 2026-11-24 (owner: accuracy over ~300 tokens per answer):** the default is back to 120B with medium reasoning and 1,000 / 1,400 / 2,200 budgets; 20B with low reasoning and 256 / 512 / 1024 is the optional fast mode. Budgets and effort are set per model. The short prompt, cache, selective context and token tracking stay. The prompt now spells out premise traps and forbids substitute settings or commands for unrecognized terms, its examples no longer come from the evaluation sets (a test enforces this), and the UI warns about specific settings named next to an unrecognized term. These prompt changes haven't been measured live yet.
+
+**Consequences:** Slightly slower first word and about 10% more tokens per answer on the free tier. Wrong-premise detection is still not reliable with this model (see docs/ANSWER_EVALUATION.md); a larger evaluation run and possibly a stronger free model are needed before the ≥ 85% assessment target can be claimed.

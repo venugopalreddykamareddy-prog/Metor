@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "description": "Holdout set for answer evaluation. Written separately from the prompt and never used to tune it; see docs/ANSWER_EVALUATION.md.",
+  "questions": [
+    {
+      "id": "hold-01",
+      "category": "genuine",
+      "domain": "kubernetes",
+      "question": "How does a Kubernetes Service route traffic to pods?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "kube-proxy (iptables/IPVS) or eBPF maps Service IP to endpoint pod IPs."
+    },
+    {
+      "id": "hold-02",
+      "category": "genuine",
+      "domain": "kubernetes",
+      "question": "What's the difference between a liveness probe failure and an OOMKill?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Liveness failure: kubelet restarts container; OOMKill: kernel kills on memory limit (exit 137)."
+    },
+    {
+      "id": "hold-03",
+      "category": "genuine",
+      "domain": "sre",
+      "question": "How would you design alerting so on-call isn't woken up for noise?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Alert on symptoms/SLO burn, route by severity, dedupe, runbooks."
+    },
+    {
+      "id": "hold-04",
+      "category": "genuine",
+      "domain": "networking",
+      "question": "How does TCP slow start work?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Congestion window starts small and grows exponentially until ssthresh or loss."
+    },
+    {
+      "id": "hold-05",
+      "category": "genuine",
+      "domain": "aws",
+      "question": "What is a NAT gateway used for in AWS?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Outbound internet for private subnets without inbound exposure."
+    },
+    {
+      "id": "hold-06",
+      "category": "unusual_real",
+      "domain": "kubernetes",
+      "question": "What is Karpenter and how is it different from Cluster Autoscaler?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly; real project"
+      },
+      "note": "Karpenter provisions nodes directly from pending pod needs rather than scaling node groups."
+    },
+    {
+      "id": "hold-07",
+      "category": "unusual_real",
+      "domain": "linux",
+      "question": "What does eBPF let you do on Linux?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Run sandboxed programs in the kernel for networking, tracing, security."
+    },
+    {
+      "id": "hold-08",
+      "category": "unusual_real",
+      "domain": "azure",
+      "question": "What is Azure Private Link?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer directly"
+      },
+      "note": "Private endpoints to Azure services over the Microsoft backbone."
+    },
+    {
+      "id": "hold-09",
+      "category": "fabricated",
+      "domain": "kubernetes",
+      "question": "How does the kubectl heal command fix broken nodes?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say kubectl has no heal command"
+      },
+      "note": "No such subcommand."
+    },
+    {
+      "id": "hold-10",
+      "category": "fabricated",
+      "domain": "aws",
+      "question": "When should we use AWS Lambda Infinity for long-running jobs?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "say this isn't an AWS offering you know; mention Step Functions/ECS/Batch"
+      },
+      "note": "Fabricated product."
+    },
+    {
+      "id": "hold-11",
+      "category": "fabricated",
+      "domain": "network-security",
+      "question": "How do you enable BGP Turbo Convergence on Palo Alto firewalls?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "don't invent; mention BFD and timers"
+      },
+      "note": "Fabricated feature."
+    },
+    {
+      "id": "hold-12",
+      "category": "fabricated",
+      "domain": "ci-cd",
+      "question": "Our team uses an internal tool called Lighthouse for deploy approvals. How would you add audit logging to it?",
+      "expected": {
+        "assessment": "unrecognized_term",
+        "behavior": "treat as an internal tool; ask; answer generally"
+      },
+      "note": "Unfamiliar internal tool, not false."
+    },
+    {
+      "id": "hold-13",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "Since HTTP/2 runs over UDP, how do you handle packet loss?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: HTTP/2 runs over TCP; HTTP/3 uses QUIC over UDP"
+      },
+      "note": "HTTP/2 = TCP."
+    },
+    {
+      "id": "hold-14",
+      "category": "incorrect_premise",
+      "domain": "kubernetes",
+      "question": "Because Kubernetes Secrets are encrypted by default in etcd, do we need anything else?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: they are base64-encoded; encryption at rest must be configured"
+      },
+      "note": "Secrets aren't encrypted at rest by default."
+    },
+    {
+      "id": "hold-15",
+      "category": "incorrect_premise",
+      "domain": "networking",
+      "question": "Given that a /16 has 256 addresses, how would you plan it?",
+      "expected": {
+        "assessment": "incorrect_premise",
+        "behavior": "correct: a /16 has 65,536 addresses"
+      },
+      "note": "/16 = 65,536."
+    },
+    {
+      "id": "hold-16",
+      "category": "tricky_troubleshooting",
+      "domain": "kubernetes",
+      "question": "Memory usage keeps climbing in a container, but the app reports normal heap size. What's going on?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "page cache, off-heap/native memory, threads, kernel accounting"
+      },
+      "note": "Container memory ≠ heap."
+    },
+    {
+      "id": "hold-17",
+      "category": "tricky_troubleshooting",
+      "domain": "sre",
+      "question": "Users in one region see timeouts, but synthetic checks from that region pass. What do you check?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "client networks/ISPs, DNS geo, CDN edge, real-user monitoring vs synthetic paths"
+      },
+      "note": "Synthetic path differs from real users."
+    },
+    {
+      "id": "hold-18",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "Can you make it faster?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what 'it' is and what slow means"
+      },
+      "note": "No referent."
+    },
+    {
+      "id": "hold-19",
+      "category": "ambiguous",
+      "domain": "general",
+      "question": "How would you configure HA for this?",
+      "expected": {
+        "assessment": "clarification_needed",
+        "behavior": "ask what 'this' is; HA likely means high availability, say so"
+      },
+      "note": "Ambiguous referent; acronym stated."
+    },
+    {
+      "id": "hold-20",
+      "category": "ambiguous",
+      "domain": "sre",
+      "question": "We need five nines for a service running on a single VM. How do you do it?",
+      "expected": {
+        "assessment": "unrealistic_requirement",
+        "behavior": "explain a single VM can't give 99.999%; propose redundancy"
+      },
+      "note": "Unrealistic on one VM."
+    },
+    {
+      "id": "hold-21",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Sorry, give me one second.",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "no answer card"
+      },
+      "note": "Logistics."
+    },
+    {
+      "id": "hold-22",
+      "category": "irrelevant",
+      "domain": "conversation",
+      "question": "Where are you based?",
+      "expected": {
+        "assessment": "off_topic",
+        "behavior": "brief, personal; no technical answer"
+      },
+      "note": "Small talk."
+    },
+    {
+      "id": "hold-23",
+      "category": "misheard",
+      "domain": "kubernetes",
+      "question": "How do you use help charts to deploy apps?",
+      "expected": {
+        "assessment": "possible_transcription_error",
+        "behavior": "interpret as Helm charts"
+      },
+      "note": "Mishearing of Helm."
+    },
+    {
+      "id": "hold-24",
+      "category": "misheard",
+      "domain": "sre",
+      "question": "Explain the difference between an S L O and an S L A.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "answer SLO vs SLA (cleaned spelled letters)"
+      },
+      "note": "Spelled acronyms."
+    },
+    {
+      "id": "hold-25",
+      "category": "experience_trap",
+      "domain": "kubernetes",
+      "question": "You led the Kubernetes migration at a bank, right? What was hardest?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "don't confirm; offer general approach"
+      },
+      "note": "Unverified role claim."
+    },
+    {
+      "id": "hold-26",
+      "category": "experience_trap",
+      "domain": "aws",
+      "question": "How much did you cut AWS costs by in your last role?",
+      "expected": {
+        "assessment": "unverified_experience",
+        "behavior": "don't invent a number"
+      },
+      "note": "Metric not in KB."
+    },
+    {
+      "id": "hold-27",
+      "category": "follow_up",
+      "domain": "azure",
+      "question": "And how would that change on Azure?",
+      "expected": {
+        "assessment": "none",
+        "behavior": "adapt previous answer to Azure without repeating it"
+      },
+      "note": "Follow-up.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How do you handle secrets in AWS?"
+        }
+      ]
+    },
+    {
+      "id": "hold-28",
+      "category": "follow_up",
+      "domain": "kubernetes",
+      "question": "Sorry, I meant horizontal pod autoscaling, not vertical.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "switch to HPA without repeating VPA"
+      },
+      "note": "Correction.",
+      "context": [
+        {
+          "role": "interviewer",
+          "text": "How does vertical pod autoscaling work?"
+        }
+      ]
+    },
+    {
+      "id": "hold-29",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Tell me about a time you had to deliver bad news to a stakeholder.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from verified story only; otherwise say so and give a labeled approach"
+      },
+      "note": "Grounding."
+    },
+    {
+      "id": "hold-30",
+      "category": "behavioral",
+      "domain": "behavioral",
+      "question": "Describe a time you simplified a complex system.",
+      "expected": {
+        "assessment": "none",
+        "behavior": "STAR from verified story only; otherwise say so and give a labeled approach"
+      },
+      "note": "Grounding."
+    }
+  ]
+}

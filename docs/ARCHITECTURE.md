@@ -261,14 +261,16 @@ Implements FR-U1–FR-U9 and FR-C1–FR-C4.
 
 ```
 TYPE: technical | behavioral | follow_up | ambiguous | off_topic | experience_probe
+NOTE: one short sentence on what's wrong, unknown, misheard, ambiguous or missing, or -
 ASSESSMENT: none | incorrect_premise | unrecognized_term | possible_transcription_error | clarification_needed | unrealistic_requirement | insufficient_information | unverified_experience | off_topic
-NOTE: one short sentence, only when ASSESSMENT is not none
 CLARIFY: one short question, or -
 ANSWER:
 <streamed answer>
 ```
 
-The client parses the header as it streams and shows the assessment as a separate chip above the answer. A malformed header is ignored, and the whole output is shown as the answer.
+NOTE comes before ASSESSMENT so the model names the problem before choosing the label; in a test run, label-first output said "the premise is wrong" in NOTE with `ASSESSMENT: none` (ADR-014). The prompt lists the options one field per line without `|`, because the model copied the separators into a one-line header; the parser accepts that form anyway. The model is asked to check every named product, feature and command, and every built-in claim, in its (hidden) reasoning before writing the header.
+
+The client parses the header as it streams and shows the assessment as a separate chip above the answer. A malformed header is ignored, and the whole output is shown as the answer. An `off_topic` result is shown as a one-line note ("small talk, no answer needed"), not an answer card.
 
 **Prompt rules for validation** (added to §5.3):
 - Treat every term as unverified. If you don't recognize it, say so and consider an internal tool, a vendor product, or a mishearing. Don't define it.
@@ -288,7 +290,7 @@ The client parses the header as it streams and shows the assessment as a separat
 
 ### 5.5 Context management
 
-- Keep the last 3–5 Q&A turns verbatim; older turns are summarized into a rolling summary of ~200 tokens.
+- Keep the last 3–5 Q&A turns verbatim; older turns are summarized into a rolling summary of ~200 tokens. Phase 4 sends the last 3 turns in full and builds the summary locally, with no extra request: the earlier questions themselves (newest kept, ≤ 800 characters), as `earlier` in `answer.request`.
 - KB retrieval for MVP: keyword/BM25-style scoring in the browser (no vector DB). Revisit embeddings only if relevance is measurably poor (ADR required).
 - Cap total prompt context (e.g. ~6k tokens) to bound latency and cost.
 
@@ -303,7 +305,8 @@ Model identifiers are **not** hard-coded in code. They come from env vars after 
 | `ANSWER_PROVIDER` | `simulated`, `groq`, `gemini` | `simulated` |
 | `ALLOW_PAID_PROVIDERS` | `true`, `false` | `false` |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3-turbo` or `whisper-large-v3` (verified 2026-11-24) | `whisper-large-v3-turbo` |
-| `GROQ_ANSWER_MODEL`, `GROQ_CLASSIFY_MODEL` | verified model IDs (Phase 4) | empty |
+| `ANSWER_REASONING_EFFORT` | GPT-OSS 120B reasoning effort (`low`, `medium`, `high`); 20B fast mode is always `low`. The model is picked in the UI (120B default) | `medium` |
+| `ANSWER_MAX_TOKENS` / `ANSWER_MAX_TOKENS_FAST` | completion budgets for short, standard, detailed, for 120B / 20B (hidden reasoning counts) | `1000,1400,2200` / `256,512,1024` |
 | `GEMINI_ANSWER_MODEL` | verified model ID | empty |
 
 **Adapter contract:** each adapter declares `billing: "simulated" | "free-tier" | "paid"`, a price table, and how it reports usage. Free-tier adapters charge $0 against `DAILY_SPEND_LIMIT_USD` but also record a **shadow cost** at the provider's paid prices, so usage that a billing-enabled account would be charged for is visible in the UI and logs.
@@ -443,23 +446,30 @@ The flow diagram above applies once persistence is enabled. By default, session 
 
 ## 9. UI/UX
 
-**Layout (MVP, single page):**
+**Layout (Phase 4, single page):**
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ ● REC  00:12:41   [Pause] [Stop]   Mode: Practice ▾  ⚙   │  ← always-visible status bar
-├──────────────────────────┬────────────────────────────────┤
-│ Transcript               │ Answer                          │
-│ …partial text in grey…   │ Q: How do you define an SLO?    │
-│ Final text in black      │ ▍streaming answer…              │
-│ [Answer this] on hover   │ [Short | Std | Detailed] [Stop] │
-├──────────────────────────┴────────────────────────────────┤
-│ Detected questions: 1. … 2. …                              │
-└───────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Metor        ● REC 00:12:41 · Connected                    Log out   │  ← sticky header, indicator never hidden
+│ Transcription ▾ [Pause] [Stop]   Answers ▾  Length ▾  ☑ auto  …      │
+├─────────────┬┬────────────┬┬────────────────────────────────────────┤
+│ Transcript  ││ Questions  ││ Suggested answers   Text size ▾ ▾ [Focus]│
+│ clean / raw ││ 1. …       ││ Q: How do you define an SLO?           │
+│ [◂ Hide]    ││ [◂ Hide]   ││ [AI-generated · GPT-OSS 120B] ‹ 2/2 ›   │
+│             ││            ││ ▍streaming answer…                     │
+│   ~25%      ││   ~20%     ││ [Copy answer] [Regenerate]   ~55%       │
+└─────────────┴┴────────────┴┴────────────────────────────────────────┘
+               ↑ dividers: drag, arrow keys, Home or double-click resets
 ```
 
-- Recording indicator: red dot + elapsed time, never hideable.
-- Large readable answer text (adjustable size); key points bolded; commands in monospace blocks with a "display only" label.
+- Recording indicator: red dot + elapsed time in a sticky header, never hideable; it stays on screen in focus mode and when panels are collapsed.
+- Panels: transcript, questions, answers. The answers panel takes about 55% of the width by default. Dividers resize with the mouse or arrow keys (separator role, keyboard focusable); transcript and questions collapse to narrow rails. Widths and collapsed state are remembered in localStorage (display preferences only, never content). Below 1100 px the panels stack.
+- Answers are grouped per question. Regenerate and "Answer again" add a version (‹ 1/2 ›) instead of replacing; an answer stopped by a newer question keeps its text with a "Stopped early" note. A genuine repeat moves the earlier answer to the end, marked "asked again".
+- Source label on every answer: "Simulated · not AI" (dashed, hatched card, and the text starts with "[Simulated placeholder, not an AI answer.]") or "AI-generated · <model> on Groq". The settings bar repeats which one is selected.
+- Copy answer button (clipboard API, needs the click; shows "Copied" or "Copy failed").
+- Focus mode for practice: only the latest question and answer, large, with "Listening: …" for a newer question that isn't answered yet. Esc exits.
+- Answer text size (14–32 px) and line spacing (1.3–2), remembered; applies to the panel and focus mode.
+- Commands in answers are display-only text; nothing is ever executed.
 - Keyboard shortcuts: Start/Stop, Answer last question, Cancel answer, change length.
 - Dark/light theme following system preference.
 - Session-start dialog: mode selection and (for live meeting/interview modes) acknowledgement that participants have been informed / AI use is permitted.
