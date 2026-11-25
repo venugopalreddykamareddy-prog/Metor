@@ -222,7 +222,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Acceptance** (status 2026-11-24; ✅ verified here, ⬜ open, with what's missing)
 
-**Remaining blockers (frozen 2026-11-25; no more code changes until the owner decides):** these five open items all need manual runs on the owner's voice and free Groq budget, or a person to grade.
+**Remaining blockers (frozen 2026-11-25; no more code changes until the owner decides):** these four open items need manual runs on the owner's voice and free Groq budget, or a person to grade.
 1. End-to-end latency with Groq answers from real speech, per transcription mode (NFR-2b, NFR-2 browser-side p50 < 1.5 s).
 2. Small-talk questions that reach the model on Groq: ≥ 7 of 8 `irrelevant` items without an answer card.
 3. Naturalness graded by a person (≥ 4/5).
