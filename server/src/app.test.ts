@@ -184,6 +184,22 @@ describe('recording', () => {
     rec.ws.terminate();
   });
 
+  it('on Stop, sends session.stopped after the last final, tagged with the recording', async () => {
+    const app = await makeApp();
+    const rec = await startRecording(app, await loginCookie(app));
+    rec.sendFrames(0, 3); // a partial is open
+    await rec.waitFor((m) => m.type === 'transcript.partial');
+    rec.sendJson({ type: 'session.stop' });
+    await rec.waitFor((m) => m.type === 'session.stopped');
+    const finalAt = rec.messages.findIndex((m) => m.type === 'transcript.final');
+    const stoppedAt = rec.messages.findIndex((m) => m.type === 'session.stopped');
+    expect(finalAt).toBeGreaterThanOrEqual(0);
+    expect(finalAt).toBeLessThan(stoppedAt);
+    expect(rec.messages[finalAt]?.sessionId).toBe(rec.sessionId);
+    expect(rec.messages[stoppedAt]?.sessionId).toBe(rec.sessionId);
+    rec.ws.terminate();
+  });
+
   it('reports frames, bytes, and level received each second', async () => {
     const app = await makeApp();
     const rec = await startRecording(app, await loginCookie(app));

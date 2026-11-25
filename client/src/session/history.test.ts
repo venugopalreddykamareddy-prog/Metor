@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { memoryStore } from '../kb/db.ts';
-import { exportJson, purgeExpired, saveSession, type SavedSession } from './history.ts';
+import type { AnswerCard } from '../answers/useAnswers.ts';
+import { exportJson, purgeExpired, saveSession, sessionAnswers, type SavedSession } from './history.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
-const data = { id: 's1', startedAt: 0, mode: 'Groq Whisper', transcript: 'How does BGP choose a path?', answers: [{ question: 'How does BGP choose a path?', answer: 'So…', engine: 'groq-120b' }] };
+const data = {
+  id: 's1',
+  startedAt: 0,
+  mode: 'Groq Whisper',
+  transcript: 'How does BGP choose a path?',
+  transcriptComplete: true,
+  answers: [{ question: 'How does BGP choose a path?', answer: 'So…', engine: 'groq-120b', status: 'done' as const }],
+};
 
 describe('saveSession', () => {
   it('writes nothing with persistence off (the default)', async () => {
@@ -40,3 +48,25 @@ describe('exportJson', () => {
     expect(out.kb).toHaveLength(1);
   });
 });
+
+describe('sessionAnswers', () => {
+  const card = (q: string, status: AnswerCard['status'], sentAt: number, text = 'partial text') =>
+    ({ question: q, text, engine: 'groq-120b', status, sentAt }) as AnswerCard;
+
+  it("keeps this recording's unfinished answers with their text and marks them incomplete", () => {
+    const cards = [
+      card('Earlier recording?', 'done', 5),
+      card('Done?', 'done', 20, 'Full answer.'),
+      card('Streaming?', 'streaming', 21),
+      card('Stopped?', 'cancelled', 22),
+      card('Failed?', 'failed', 23, ''),
+    ];
+    expect(sessionAnswers(cards, 10)).toEqual([
+      { question: 'Done?', answer: 'Full answer.', engine: 'groq-120b', status: 'done' },
+      { question: 'Streaming?', answer: 'partial text', engine: 'groq-120b', status: 'pending' },
+      { question: 'Stopped?', answer: 'partial text', engine: 'groq-120b', status: 'stopped' },
+      { question: 'Failed?', answer: '', engine: 'groq-120b', status: 'failed' },
+    ]);
+  });
+});
+

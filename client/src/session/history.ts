@@ -1,3 +1,4 @@
+import type { AnswerCard } from '../answers/useAnswers.ts';
 import type { Store } from '../kb/db.ts';
 
 // Opt-in session history (FR-S1b, FR-S4): off by default; when on, each recording is saved on Stop
@@ -16,7 +17,26 @@ export interface SavedSession {
   mode: string;
   /** The clean transcript text; the raw recognizer text isn't kept. */
   transcript: string;
-  answers: { question: string; answer: string; engine: string }[];
+  /** False when a new recording started before the last transcription arrived. */
+  transcriptComplete: boolean;
+  answers: SavedAnswer[];
+}
+
+export interface SavedAnswer {
+  question: string;
+  /** The text shown, possibly partial. */
+  answer: string;
+  engine: string;
+  /** done, or why it's incomplete: still streaming or waiting, stopped early, or failed. */
+  status: 'done' | 'pending' | 'stopped' | 'failed';
+}
+
+/** This recording's answers, finished or not; unfinished ones keep their text and say so. */
+export function sessionAnswers(cards: readonly AnswerCard[], startedAt: number): SavedAnswer[] {
+  const status = { done: 'done', streaming: 'pending', cancelled: 'stopped', failed: 'failed' } as const;
+  return cards
+    .filter((c) => c.sentAt >= startedAt)
+    .map((c) => ({ question: c.question, answer: c.text, engine: c.engine, status: status[c.status] }));
 }
 
 export interface HistorySettings {

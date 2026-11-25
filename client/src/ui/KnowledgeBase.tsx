@@ -19,6 +19,8 @@ const PROVENANCE_HELP: Record<Provenance, string> = {
 const MAX_IMPORT_BYTES = 200_000;
 
 interface Props {
+  /** The answer model selected now, e.g. "Groq GPT-OSS 120B"; null for Simulated. */
+  provider: string | null;
   items: KbItem[];
   error: string | null;
   onSave: (item: KbItem) => void;
@@ -60,10 +62,16 @@ export function KnowledgeBase(p: Props) {
   return (
     <details className="accuracy kb" data-testid="kb">
       <summary>Knowledge base and history ({p.items.length} items)</summary>
-      <p className="muted">
-        Stored only in this browser. For each question, a few matching excerpts (never the whole knowledge base) are sent with it to the
-        answer model. Turn on Zero Data Retention in Groq. Answers claim experience only from items marked verified. Deleting here doesn't
-        delete what a provider already received.
+      <p className="muted" data-testid="kb-disclosure">
+        Stored only in this browser. For each question, the few excerpts that match it (never the whole knowledge base) are sent with the
+        question to the selected answer model:{' '}
+        {p.provider ? (
+          <strong>{p.provider}, an AI provider outside Metor. Turn on Zero Data Retention in Groq.</strong>
+        ) : (
+          <strong>Simulated: nothing is sent to an AI provider.</strong>
+        )}{' '}
+        Untick "Use in answers" to keep an item out. Answers claim experience only from items marked verified. Deleting here doesn't delete
+        what a provider already received.
       </p>
       {p.error && <p className="error">{p.error}</p>}
 
@@ -148,7 +156,13 @@ export function KnowledgeBase(p: Props) {
         <ul className="kb-list" data-testid="session-list">
           {p.sessions.map((s) => (
             <li key={s.id}>
-              {new Date(s.startedAt).toLocaleString()} · {s.mode} · {s.answers.length} answers · expires {new Date(s.expiresAt).toLocaleDateString()}{' '}
+              {new Date(s.startedAt).toLocaleString()} · {s.mode} · {s.answers.length} answers
+              {(() => {
+                const incomplete = s.answers.filter((a) => a.status !== 'done').length;
+                return incomplete ? ` (${incomplete} incomplete)` : '';
+              })()}
+              {s.transcriptComplete === false && ' · last part of the transcript may be missing'} · expires{' '}
+              {new Date(s.expiresAt).toLocaleDateString()}{' '}
               <button type="button" className="link" onClick={() => p.onDeleteSession(s.id)}>
                 Delete
               </button>

@@ -75,6 +75,8 @@ export const errorCodeSchema = z.enum([
 
 export const serverMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('session.started'), ...envelope, sessionId }),
+  // Sent once a stopped recording's last transcription has arrived (or the bounded wait ran out).
+  z.strictObject({ type: z.literal('session.stopped'), ...envelope, sessionId }),
   z.strictObject({ type: z.literal('session.resumed'), ...envelope, sessionId, nextAudioSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('audio.ack'), ...envelope, seq: z.number().int().min(0) }),
   // What the server received in the last second; levelDb is the RMS level (-100 = silence, 0 = full scale).

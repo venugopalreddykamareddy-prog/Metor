@@ -22,7 +22,14 @@ function open(): Promise<IDBDatabase> {
         if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: 'id' });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Another tab deleting or upgrading the database: let go so it isn't blocked.
+      req.result.onversionchange = () => {
+        req.result.close();
+        opening = null;
+      };
+      resolve(req.result);
+    };
     req.onerror = () => {
       opening = null;
       reject(req.error ?? new Error('IndexedDB unavailable'));
@@ -52,17 +59,33 @@ export function idbStore<T extends { id: string }>(name: StoreName): Store<T> {
   };
 }
 
-/** "Delete everything": removes the whole database (KB and saved sessions). */
-export function deleteDatabase(): Promise<void> {
+export const BLOCKED_WAIT_MS = 3000;
+
+/**
+ * "Delete everything": removes the whole database (KB and saved sessions). Resolves only once it's
+ * really gone. Other Metor tabs close their connection when asked (onversionchange); if one still
+ * holds it after BLOCKED_WAIT_MS, or deletion fails, this rejects and nothing is reported as deleted.
+ */
+export function deleteDatabase(blockedWaitMs = BLOCKED_WAIT_MS): Promise<void> {
   const pending = opening;
   opening = null;
   return (pending ? pending.then((db) => db.close(), () => undefined) : Promise.resolve()).then(
     () =>
       new Promise<void>((resolve, reject) => {
         const req = indexedDB.deleteDatabase(DB_NAME);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error ?? new Error('Could not delete local data'));
-        req.onblocked = () => resolve(); // finishes once other tabs close it
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        req.onsuccess = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        req.onerror = () => {
+          clearTimeout(timer);
+          reject(req.error ?? new Error('Could not delete local data.'));
+        };
+        req.onblocked = () => {
+          // Still finishes if the other tab lets go in time; otherwise report failure.
+          timer = setTimeout(() => reject(new Error('Another Metor tab is using the data. Close other Metor tabs and try again.')), blockedWaitMs);
+        };
       }),
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { unsupportedClaims } from './experienceClaims.ts';
-import { chunks, isBehavioral, keywords, retrieve, snippetLabel, type KbItem } from './kb.ts';
+import { chunks, isBehavioral, isProfileQuestion, keywords, retrieve, snippetLabel, type KbItem } from './kb.ts';
 import { parseClientMessage } from './messages.ts';
 
 let n = 0;
@@ -106,3 +106,47 @@ describe('answer.request kb field', () => {
     expect(parseClientMessage(JSON.stringify({ ...req, kb: [{ ...kb[0], provenance: 'trusted' }] })).ok).toBe(false);
   });
 });
+
+describe('long paragraphs (review finding 4)', () => {
+  const sentence = (i: number) => `In role ${i} I ran ${i * 10} AKS clusters and wrote Terraform module number ${i} for networking.`;
+  const long = item('resume', 'One-line resume', Array.from({ length: 30 }, (_, i) => sentence(i + 1)).join(' '));
+
+  it('splits a long line into chunks without losing any text', () => {
+    const parts = chunks(long);
+    expect(parts.length).toBeGreaterThan(3);
+    expect(parts.every((p) => p.length <= 350)).toBe(true);
+    expect(parts.join(' ').replace(/\s+/g, ' ')).toBe(long.text);
+  });
+
+  it('finds a fact from the end of a long paragraph', () => {
+    const got = retrieve([long], 'Tell me about Terraform module number 29');
+    expect(got.map((s) => s.text).join(' ')).toContain('module number 29');
+  });
+
+  it('splits an unbroken token longer than a chunk instead of cutting it', () => {
+    const blob = item('reference', 'Blob', 'x'.repeat(900));
+    expect(chunks(blob).join('')).toBe('x'.repeat(900));
+  });
+});
+
+describe('profile questions (review finding 6)', () => {
+  it.each(['Tell me about yourself.', 'Can you walk me through your background?', "What's your experience?", 'Give me a quick summary — describe your career so far', 'What is your current role?'])(
+    'detects "%s"',
+    (q) => expect(isProfileQuestion(q)).toBe(true),
+  );
+  it.each(['How does BGP choose a path?', 'Tell me about a time you failed'])('ignores "%s"', (q) => expect(isProfileQuestion(q)).toBe(false));
+
+  it('retrieves the start of the verified resume without a keyword match, within the limits', () => {
+    const got = retrieve(items, 'Tell me about yourself');
+    expect(got[0]?.title).toBe('Resume 2026');
+    expect(got[0]?.text).toContain('Senior SRE, Contoso Payments');
+    expect(got.length).toBeLessThanOrEqual(5);
+    expect(got.some((s) => s.title === 'Old resume')).toBe(false); // inactive stays out
+  });
+
+  it('never pulls in an unverified resume for a profile question', () => {
+    const draft = item('resume', 'Draft', 'Principal engineer at a big company.', { provenance: 'hypothetical' });
+    expect(retrieve([draft], 'Tell me about yourself')).toEqual([]);
+  });
+});
+

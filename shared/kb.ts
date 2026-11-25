@@ -56,6 +56,12 @@ const BEHAVIORAL =
   /^(?:(?:so|okay|ok|and|now)[,\s]+)*(?:tell me about a (?:time|situation)|describe a (?:time|situation)|give me an example of (?:a time|when)|walk me through a time|have you ever|share an example of|what's an example of a time)|\ba time (?:when|you)\b/i;
 export const isBehavioral = (question: string): boolean => BEHAVIORAL.test(question.trim());
 
+// Introductions and career questions share few words with a resume ("tell me about yourself"),
+// so they get the start of the verified resume (summary, latest role) without a keyword match.
+const PROFILE =
+  /\b(?:tell me (?:a bit |a little )?about (?:yourself|your (?:background|career|experience))|introduce yourself|walk me through your (?:background|resume|cv|career|experience)|(?:summari[sz]e|describe) your (?:background|career|experience)|your (?:background|career (?:so far|summary)|professional (?:background|summary)|overall experience)|what (?:do you do|is your current role|kind of work do you do)|your (?:current|most recent|last) (?:role|job|position)|what(?:'s| is) your experience|what experience do you have|how many years of experience|why should we hire you)\b/i;
+export const isProfileQuestion = (question: string): boolean => PROFILE.test(question.replace(/’/g, "'"));
+
 const STOP = new Set(
   (
     'a an the and or but if then so of to in on at by for with from as is are was were be been being do does did have has had ' +
@@ -95,7 +101,9 @@ export function chunks(item: KbItem, size = 350): string[] {
   const out: string[] = [];
   for (const paragraph of item.text.split(/\n\s*\n/)) {
     let current = '';
-    for (const line of paragraph.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    // A long line (a resume paragraph with no line breaks) splits at sentences, then words, so
+    // every part stays retrievable; nothing is cut off.
+    for (const line of paragraph.split('\n').flatMap((l) => splitLong(l.trim(), size)).filter(Boolean)) {
       if (current && current.length + line.length + 1 > size) {
         out.push(current);
         current = '';
@@ -104,7 +112,27 @@ export function chunks(item: KbItem, size = 350): string[] {
     }
     if (current) out.push(current);
   }
-  return out.map((c) => clip(c));
+  return out;
+}
+
+/** Pieces of at most `size` characters, cut after a sentence where possible, else between words. */
+function splitLong(line: string, size: number): string[] {
+  if (line.length <= size) return [line];
+  const out: string[] = [];
+  let current = '';
+  const add = (piece: string) => {
+    if (current && current.length + piece.length + 1 > size) {
+      out.push(current);
+      current = '';
+    }
+    current = current ? `${current} ${piece}` : piece;
+  };
+  for (const sentence of line.split(/(?<=[.!?;])\s+/)) {
+    if (sentence.length <= size) add(sentence);
+    else for (const word of sentence.split(/\s+/)) for (let i = 0; i < word.length; i += size) add(word.slice(i, i + size));
+  }
+  if (current) out.push(current);
+  return out;
 }
 
 /**
@@ -116,17 +144,21 @@ export function retrieve(items: readonly KbItem[], query: string, opts: { max?: 
   const max = opts.max ?? 5;
   const maxChars = opts.maxChars ?? 2400;
   const q = new Set(keywords(query));
-  if (q.size === 0) return [];
+  const profile = isProfileQuestion(query);
+  if (q.size === 0 && !profile) return [];
   const scored: { snippet: KbSnippet; score: number }[] = [];
   for (const item of items) {
     if (!item.active || !item.text.trim()) continue;
     const titleWords = new Set(keywords(item.title));
     const termHit = item.kind === 'term' && [...titleWords].length > 0 && [...titleWords].every((w) => q.has(w));
-    for (const text of chunks(item)) {
+    // Profile questions: the first two chunks of a verified resume (summary, latest role).
+    const profileItem = profile && item.provenance === 'verified' && item.kind === 'resume';
+    for (const [index, text] of chunks(item).entries()) {
       const words = new Set(keywords(text));
       let score = 0;
       for (const w of q) score += (words.has(w) ? 1 : 0) + (titleWords.has(w) ? 0.5 : 0);
       if (termHit) score += 10;
+      if (profileItem && index < 2) score += 3 - index;
       if (score < 1) continue;
       if (item.provenance === 'verified' && hasProvenance(item.kind)) score += 0.25;
       scored.push({ snippet: { kind: item.kind, provenance: item.provenance, title: clip(item.title, 120), text }, score });
