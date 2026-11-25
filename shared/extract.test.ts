@@ -51,6 +51,17 @@ describe('extractQuestions on eval/holdout-extraction.json', () => {
 });
 
 describe('extractQuestions details', () => {
+  it('splits a question from the answer that follows it, but not a clause inside the question', () => {
+    const texts = (s: string) => extractQuestions(s).parts.map((p) => [p.kind, p.text]);
+    expect(texts('what would you check first i would look at the kubelet logs')).toEqual([
+      ['question', 'what would you check first'],
+      ['statement', 'i would look at the kubelet logs'],
+    ]);
+    for (const q of ['what would you do if i would ask you to scale it', 'do you think we would need a second region for this', 'how would you handle it when we would lose a whole region']) {
+      expect(extractQuestions(q).parts, q).toHaveLength(1);
+    }
+  });
+
   it('keeps the original words and punctuation of clean text', () => {
     const { parts } = extractQuestions('We run AKS. How would you plan the upgrade?');
     expect(parts).toEqual([

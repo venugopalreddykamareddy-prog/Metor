@@ -511,6 +511,25 @@
         ]
       },
       "note": "Ambiguous acronym with no context: extraction keeps it; validation asks which meaning (FR-U11)."
+    },
+    {
+      "id": "ext-31",
+      "input": "how would you define an slo and an error budget for a payments api i would start with p99 latency and availability then alert on burn rate in datadog and grafana",
+      "expected": {
+        "questions": [
+          {
+            "text": "how would you define an slo and an error budget for a payments api",
+            "kind": "question"
+          }
+        ],
+        "ignored": [
+          {
+            "text": "i would start with p99 latency and availability then alert on burn rate in datadog and grafana",
+            "kind": "statement"
+          }
+        ]
+      },
+      "note": "Browser speech regression (accuracy-script lines 1-2, no punctuation): the question merged with the answer that followed. Groq Whisper's punctuation separated them."
     }
   ]
 }

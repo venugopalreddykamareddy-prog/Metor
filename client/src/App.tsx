@@ -9,7 +9,8 @@ import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTransc
 import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
 import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
-import { useAnswerDisplay, useSetting } from './settings.ts';
+import { load, save, useAnswerDisplay, useSetting } from './settings.ts';
+import { leftToday, preferredMode, whisperQuotaLeft } from './session/transcriptionMode.ts';
 import { speechRecognitionCtor } from './stt/webspeech.ts';
 import { AccuracyCheck } from './ui/AccuracyCheck.tsx';
 import { AnswersPanel } from './ui/AnswersPanel.tsx';
@@ -67,7 +68,6 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   ];
   // GPT-OSS 120B (medium reasoning) is the default for accuracy; 20B is the optional fast mode.
   const engines: AnswerEngine[] = me.providers.groq ? ['groq-120b', 'groq-20b', 'simulated'] : ['simulated'];
-  const [mode, setMode] = useSetting<TranscriptionMode>('mode', available, 'simulated');
   const [engine, setEngine] = useSetting<AnswerEngine>('answerModel', engines, engines[0] ?? 'simulated');
   const [length, setLength] = useSetting<AnswerLength>('length', ['short', 'standard', 'detailed'], 'standard');
   const [autoAnswer, setAutoAnswer] = useSetting<'on' | 'off'>('autoAnswer', ['on', 'off'], 'on');
@@ -76,6 +76,16 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const { display, setFontSize, setLineSpacing } = useAnswerDisplay();
   const [askingConsent, setAskingConsent] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
+  // A mode the user picked is kept; otherwise Groq Whisper within its free quota, then Browser speech.
+  const [picked, setPicked] = useState<TranscriptionMode | null>(() => {
+    const stored = load('mode');
+    return available.find((m) => m === stored) ?? null;
+  });
+  const mode = picked !== null && available.includes(picked) ? picked : preferredMode(available, whisperQuotaLeft(usage));
+  const setMode = (m: TranscriptionMode) => {
+    setPicked(m);
+    save('mode', m);
+  };
   const corrections = useCorrections();
   // Hand edits of single sentences, for the current recording only.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -240,8 +250,9 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
         )}
         {usage?.groq && (
           <span className="muted" data-testid="usage">
-            Groq free tier left today: {Math.max(0, usage.groq.answers.limits.perDay.requests - usage.groq.answers.lastDay.requests)} requests ·{' '}
-            {(Math.max(0, usage.groq.answers.limits.perDay.units - usage.groq.answers.lastDay.units) / 1000).toFixed(1)}k tokens
+            Groq free tier left today: transcription {(leftToday(usage.groq.transcription).units / 60).toFixed(0)} min of audio ·{' '}
+            {leftToday(usage.groq.transcription).requests} requests; answers {leftToday(usage.groq.answers).requests} requests ·{' '}
+            {(leftToday(usage.groq.answers).units / 1000).toFixed(1)}k tokens
             {(() => {
               const t = usage.answerTokens?.[engine];
               const avg = t?.averagePerAnswer.total;
@@ -251,7 +262,27 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
         )}
       </div>
 
-      {recorder.error && <p role="alert" className="error">{recorder.error}</p>}
+      {recorder.error && (
+        <p role="alert" className="error">
+          {recorder.error}
+          {recorder.quotaExhausted && activeMode === 'groq' && available.includes('webspeech') && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => {
+                  // Never switched automatically: stop, then ask consent for the other provider.
+                  recorder.stop();
+                  setMode('webspeech');
+                  setAskingConsent(true);
+                }}
+              >
+                Switch to Browser speech
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
       {focus && (
         <FocusView

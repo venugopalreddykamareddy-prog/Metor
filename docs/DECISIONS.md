@@ -180,6 +180,8 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No new dependencies. Web Speech can't be tested headlessly, so Playwright drives a fake `SpeechRecognition`. Real accuracy depends on the user's voice and mic, so the comparison needs a manual run. Groq is never called in CI.
 
+**Amended 2026-11-25 (owner's benchmark, docs/STT_EVALUATION.md):** Groq Whisper beat Browser speech on the accuracy script (WER 10.9% vs 30.1% raw, terms 26/34 vs 18/34, latency 0.35 s vs 0.47 s). When the user hasn't picked a mode, Metor now preselects Groq Whisper if `GROQ_API_KEY` is set and today's transcription ledger has room, otherwise Browser speech; without Groq it stays Simulated. A picked mode is remembered and wins. Nothing switches on its own: if Groq's quota runs out while recording, the error offers "Switch to Browser speech", which stops recording and opens the consent dialog for the new provider. Transcription quota (audio seconds) and answer quota (tokens) are separate ledgers and are shown separately.
+
 ---
 
 ## ADR-012: Keep the raw transcript; derive a clean one locally

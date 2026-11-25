@@ -51,6 +51,8 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   const [connection, setConnection] = useState<ConnectionStatus>('disconnected');
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript);
   const [error, setError] = useState<string | null>(null);
+  // Set for a Groq free-tier quota error, so the UI can offer Browser speech (with consent).
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [audioStats, setAudioStats] = useState<AudioStats | null>(null);
   const [latencies, setLatencies] = useState<number[]>([]);
@@ -143,6 +145,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
             );
           } else {
             setError(msg.message);
+            if (msg.code === 'quota_exhausted') setQuotaExhausted(true);
           }
           break;
       }
@@ -269,6 +272,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     if (activeRef.current) return;
     if (mode !== 'webspeech' && !wsRef.current?.isOpen) return;
     setError(null);
+    setQuotaExhausted(false);
     setPhase('starting');
     lastFinalSeqRef.current = 0;
     setTranscript(emptyTranscript);
@@ -304,6 +308,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
 
   const reconnect = useCallback(() => {
     setError(null);
+    setQuotaExhausted(false);
     wsRef.current?.start();
   }, []);
 
@@ -315,6 +320,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     connection,
     transcript,
     error,
+    quotaExhausted,
     elapsedMs,
     audioStats,
     latencies,

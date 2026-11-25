@@ -26,6 +26,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Fixed
 
+- Accuracy-check term recall: a term next to `-` or `/` ("Terraform-managed", "Terraform/Helm") was marked missed; whole-word matching keeps p95/p99 and AKS/EKS distinct.
+- Question extraction: an unpunctuated question followed by a first-person answer ("…for a payments api i would start with p99…") no longer merges into one question (fixture ext-31, from the owner's Browser speech run).
 - Manual-testing fixes: unrecognized terms and ambiguous acronyms now get only a short clarification (prompt rule plus a server-side limiter that drops any explanation after it; cache and token accounting unchanged). Typed, merged and regenerated questions show submitted → first word instead of speech-end latency. Assessment notes no longer repeat the label or the question the answer already asks.
 - Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.
 - Playwright's test server now blanks `GROQ_API_KEY` and `GEMINI_API_KEY`, so a key in the Codespace environment can't make browser tests call a real provider.
@@ -35,6 +37,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Changed
 
+- Transcription mode: Groq Whisper is preselected when configured and within its free quota, Browser speech otherwise (owner's benchmark recorded in docs/STT_EVALUATION.md). A Groq quota error offers "Switch to Browser speech" through the consent dialog; never automatic. The usage line shows transcription and answer budgets separately.
 - Answer prompt: spoken, conversational style (contractions, answer first, one hypothetical example, no markdown or stock phrases, no formulaic closer) with a textbook-vs-spoken example; explicit check of every named term and built-in claim before the header; an unknown feature is never described or used as if real.
 - The answer's Stop button is now "Stop answer", so it can't be confused with stopping the recording.
 

@@ -79,6 +79,11 @@ const FILLERS = new Set([
 const ACK_PHRASES = [['that', 'makes', 'sense'], ['got', 'it'], ['thank', 'you'], ['makes', 'sense'], ['i', 'see']];
 // A part ending on one of these is unfinished.
 const DANGLING = new Set(['to', 'for', 'the', 'a', 'an', 'and', 'or', 'but', 'of', 'with', 'about', 'my', 'your', 'our', 'because', 'if', 'was', 'into', 'from', 'like', 'that']);
+// "…for a payments api | i would start with p99": a first-person answer after a complete question
+// starts a statement. Browser speech gives no punctuation to split on. Not after words that take a
+// clause ("what if i would", "do you think we'd", "should i").
+const ANSWER_OPENERS = [['i', 'would'], ["i'd"], ['i', 'will'], ["i'll"], ['we', 'would'], ["we'd"], ['we', 'will'], ["we'll"]];
+const CLAUSE_TAKERS = new Set(['if', 'that', 'when', 'whether', 'because', 'think', 'know', 'say', 'said', 'mean', 'unless', 'where', 'why', 'how', 'what', 'and', 'or', 'but', 'so']);
 // Back-references that make "… and <question>" depend on the first part (a compound question).
 const BACK_REFERENCES = new Set(['it', 'its', "it's", 'that', 'this', 'they', 'them', 'those', 'these', 'one', 'first', 'then']);
 
@@ -233,7 +238,14 @@ export function extractQuestions(input: string, opts: { hasContext?: boolean } =
       // "…which node a pod | is scheduled on": an embedded wh-clause still needs its verb.
       const embeddedWh = prevRest.slice(1).slice(-4).some((t) => WH.has(t.bare));
       const auxAllowed = !auxOpener || (!WH.has(prev) && !embeddedWh && prevRest.length >= 4 && opensQuestion(prevRest, 0) !== null);
-      if (enumerator && (complete(prevRest) || current.length >= 3)) {
+      const answerOpener =
+        matchAny(tokens, i, ANSWER_OPENERS) > 0 &&
+        !CLAUSE_TAKERS.has(prev) &&
+        !AUX.has(prev) &&
+        prevRest.length >= 5 &&
+        complete(prevRest) &&
+        classify(prevRest) === 'question';
+      if (answerOpener || (enumerator && (complete(prevRest) || current.length >= 3))) {
         flush();
       } else if (opener && auxAllowed && complete(prevRest)) {
         if (prev === 'and' || prev === 'or') {
