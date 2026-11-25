@@ -276,14 +276,14 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 6 — Interview profiles and practice mode (plan awaiting owner approval)
+## Phase 6 — Interview profiles and practice mode (plan approved 2026-11-25)
 
 **Objective:** Universal interview profiles (QA, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering, custom roles; REQUIREMENTS §1), each with its own resumes, job descriptions, verified experience, vocabulary and answer preferences, and context and caching kept separate per profile. Then practice mode on top: question banks per profile, feedback on spoken answers, weak-topic tracking and session summaries (REQUIREMENTS §2.7).
 
 **Unchanged:** natural conversational answers, STAR from verified stories, trick-question validation (§5.4 header), one request per question, recording consent, authorized-use rules, Groq Whisper first with Browser speech fallback, GPT-OSS 120B default, $0, no new dependencies.
 
 **Checkpoint 6.1 — Profile model and storage**
-- `shared/profile.ts`: `{ id, name, role (qa | qa_automation | sdet | sre | devops | cloud | networking | swe | custom), level, topics[], vocabulary[], corrections[], answerPrefs: { length, star, emphasis } , activeResumeId, activeJobId }`. Role templates give default topics and terms; custom roles start empty.
+- `shared/profile.ts`: `{ id, name, role (qa_manual | qa_automation | sdet | sre | devops | cloud | networking | swe | custom), level, topics[], vocabulary[], corrections[], answerPrefs: { length, star, emphasis } , activeResumeId, activeJobId }`. Role templates give default topics and terms; custom roles start empty.
 - IndexedDB version 2 adds a `profiles` store; KB items and saved sessions get a `profileId`. Migration puts existing items, sessions and `metor.corrections` into one profile named after the current setup (SRE) and keeps everything. "Shared" items (e.g. one resume used for two roles) are an explicit tick, never the default.
 - Profile picker in the header; switching is disabled while recording. Delete profile removes its items and sessions after a confirm; export per profile and for everything.
 
@@ -312,7 +312,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - With history off, nothing practice-related is stored; delete profile and Delete everything remove everything for that scope.
 - Lint, unit, eval check, build, bundle scan and e2e pass with simulated providers.
 
-**Decisions for the owner before implementation:** (1) should shared items be allowed at all, or should profiles be fully separate; (2) feedback model: 120B or 20B by default (Phase 4 measured about 1.3K vs 1.0K tokens per answer, docs/ANSWER_EVALUATION.md); (3) who writes the initial question banks: the owner, or drafted by the agent for owner review (questions only, no facts).
+**Decisions (approved by the owner, 2026-11-25):** (1) profiles are isolated by default; the user can explicitly share selected KB items with other profiles, and nothing (resumes, experience, job descriptions, history, cached answers) is ever mixed automatically; (2) practice feedback defaults to GPT-OSS 120B with medium reasoning, 20B optional as fast mode; (3) the agent drafts editable, role-specific question banks (technical, behavioral, scenario, troubleshooting, follow-up, misleading, made-up) for owner review, stored locally, with no invented experience or unverified facts. Roles: QA Manual, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering, custom. Answer preferences: natural openers and endings, STAR from verified experience, practical examples, default length; feedback covers accuracy, relevance, communication and completeness.
 
 ---
 
