@@ -140,7 +140,7 @@ Before answering, Metor works out what kind of question it is and whether it res
 
 ### 2.7 Practice mode (Phase 6)
 
-- Question bank per interview profile (§1, including custom roles) and topic; random or targeted drills.
+- Question bank per interview profile (§1, including custom roles) and topic; random or targeted drills. Plan: IMPLEMENTATION_PLAN Phase 6.
 - User answers aloud; AI gives feedback on accuracy, structure, and delivery.
 - Track weak topics across sessions.
 
