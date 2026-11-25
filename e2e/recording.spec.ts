@@ -100,6 +100,31 @@ test('logging out while recording releases the mic', async ({ page }) => {
   expect(await liveTrackCount(page)).toBe(0);
 });
 
+test('logging out while the mic is still opening never leaves it on', async ({ page }) => {
+  // Hold getUserMedia open (like a slow permission prompt) until the test releases it.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __releaseMic: () => void };
+    const gate = new Promise<void>((r) => (w.__releaseMic = r));
+    const inner = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      await gate;
+      return inner(c);
+    };
+  });
+  await login(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Start recording?' });
+  await dialog.getByLabel('I understand and want to start recording').check();
+  await dialog.getByRole('button', { name: 'Start recording' }).click();
+  await expect(page.getByRole('button', { name: 'Starting…' })).toBeVisible();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page.getByLabel('Passphrase')).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __releaseMic: () => void }).__releaseMic());
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __streams: MediaStream[] }).__streams.length)).toBe(1);
+  await expect.poll(() => liveTrackCount(page)).toBe(0);
+  await expect(indicator(page)).toHaveCount(0);
+});
+
 test('reconnects mid-recording and keeps going', async ({ page }) => {
   let dropConnection = () => {};
   await page.routeWebSocket('/ws', (ws) => {

@@ -6,6 +6,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { ServerMessageBody } from '../../../shared/messages.ts';
 import { UsageLedger } from '../limits/usageLedger.ts';
 import { AnswerSession } from './engine.ts';
+import { createSimulatedAnswer } from './simulated.ts';
 import { createGroqAnswer } from './groq.ts';
 import type { AnswerRequest } from './prompt.ts';
 import type { AnswerProvider } from './types.ts';
@@ -240,5 +241,123 @@ describe('AnswerSession with no answer text', () => {
     expect(sent.at(-1)).toMatchObject({ type: 'answer.failed', code: 'provider_unavailable' });
     expect((sent.at(-1) as { message: string }).message).toContain('Try Regenerate');
     expect(sent.some((m) => m.type === 'answer.done')).toBe(false);
+  });
+});
+
+describe('AnswerSession queue (review finding 3)', () => {
+  const done = (sent: ServerMessageBody[], id: string) => sent.some((m) => m.type === 'answer.done' && m.questionId === id);
+  const failed = (sent: ServerMessageBody[], id: string) => sent.find((m) => m.type === 'answer.failed' && m.questionId === id);
+
+  it('answers questions detected together one after another instead of cancelling', async () => {
+    const { s, sent } = session({ simulated: createSimulatedAnswer(1) }, null);
+    const a = { ...request('simulated', 'How does BGP choose a path?'), questionId: 'a' };
+    const b = { ...request('simulated', 'How does OSPF elect a DR?'), questionId: 'b' };
+    await Promise.all([s.handle(a), s.handle(b)]);
+    expect(done(sent, 'a')).toBe(true);
+    expect(done(sent, 'b')).toBe(true);
+    expect(sent.some((m) => m.type === 'answer.failed')).toBe(false);
+    // In order: a finished before b started streaming.
+    const aDone = sent.findIndex((m) => m.type === 'answer.done' && m.questionId === 'a');
+    const bFirst = sent.findIndex((m) => m.type === 'answer.delta' && m.questionId === 'b');
+    expect(aDone).toBeLessThan(bFirst);
+  });
+
+  it('a typed question (replace) stops the one in flight and drops waiting ones', async () => {
+    const { s, sent } = session({ simulated: createSimulatedAnswer(1) }, null);
+    const a = s.handle({ ...request('simulated', 'How does BGP choose a path?'), questionId: 'a' });
+    const b = s.handle({ ...request('simulated', 'How does OSPF elect a DR?'), questionId: 'b' });
+    await new Promise((r) => setTimeout(r, 10));
+    await s.handle({ ...request('simulated', 'What is a VLAN?'), questionId: 'c', replace: true });
+    await Promise.all([a, b]);
+    expect(failed(sent, 'a')).toMatchObject({ code: 'cancelled', message: 'Replaced by a newer question.' });
+    expect(failed(sent, 'b')).toMatchObject({ code: 'cancelled' });
+    expect(done(sent, 'c')).toBe(true);
+  });
+
+  it('cancels a waiting question without touching the one in flight', async () => {
+    const { s, sent } = session({ simulated: createSimulatedAnswer(1) }, null);
+    const a = s.handle({ ...request('simulated', 'How does BGP choose a path?'), questionId: 'a' });
+    const b = s.handle({ ...request('simulated', 'How does OSPF elect a DR?'), questionId: 'b' });
+    s.cancel('b');
+    await Promise.all([a, b]);
+    expect(done(sent, 'a')).toBe(true);
+    expect(failed(sent, 'b')).toMatchObject({ code: 'cancelled' });
+    expect(sent.some((m) => m.type === 'answer.delta' && m.questionId === 'b')).toBe(false);
+  });
+});
+
+describe('AnswerSession ledger persistence (review finding 5)', () => {
+  it('does not call the provider when the reservation cannot be saved', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'metor-engine-'));
+    dirs.push(dir);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'blocker'), 'x');
+    const broken = new UsageLedger(join(dir, 'blocker', 'ledger.json'), LIMITS);
+    let calls = 0;
+    const groq = createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => (calls++, sse(['ANSWER:\nx'], null))) as unknown as typeof fetch });
+    const { s, sent } = session({ 'groq-120b': groq }, broken);
+    await s.handle(request());
+    expect(calls).toBe(0);
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.failed', code: 'provider_unavailable' });
+    expect(broken.usedInLast(1)).toEqual({ requests: 0, units: 0 });
+  });
+});
+
+describe('Groq answer stream framing (secondary fixes)', () => {
+  const raw = (body: string) =>
+    createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => new Response(body, { status: 200 })) as unknown as typeof fetch });
+
+  it('accepts CRLF event delimiters', async () => {
+    const ev = (c: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\r\n\r\n`;
+    const { s, text, sent } = session({ 'groq-120b': raw(ev('TYPE: technical\nASSESSMENT: none\nNOTE: -\nCLARIFY: -\nANSWER:\n') + ev('Hello there.') + 'data: [DONE]\r\n\r\n') }, await ledger());
+    await s.handle(request());
+    expect(text()).toBe('Hello there.');
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.done', truncated: false });
+  });
+
+  it('marks a stream that ends without [DONE] or finish_reason as cut off (not cached)', async () => {
+    const ev = (c: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`;
+    const { s, sent } = session({ 'groq-120b': raw(ev('TYPE: technical\nASSESSMENT: none\nNOTE: -\nCLARIFY: -\nANSWER:\n') + ev('Half an ans')) }, await ledger());
+    await s.handle(request());
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.done', truncated: true });
+  });
+});
+
+
+describe('AnswerSession cancellation during the quota write (PR #8 follow-up)', () => {
+  /** A ledger whose durable reservation waits until the test releases it. */
+  async function slowLedger() {
+    const l = await ledger();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const original = l.reserveDurable.bind(l);
+    l.reserveDurable = async (u) => {
+      await gate;
+      return original(u);
+    };
+    return { l, release };
+  }
+  const countingGroq = () => {
+    const calls = { n: 0 };
+    const groq = createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => (calls.n++, sse(['ANSWER:\nx'], null))) as unknown as typeof fetch });
+    return { groq, calls };
+  };
+
+  it.each([
+    ['Stop answer', (s: AnswerSession, id: string) => s.cancel(id)],
+    ['logout (close)', (s: AnswerSession) => s.close()],
+    ['a typed replacement', (s: AnswerSession) => void s.handle({ ...request('simulated', 'What is a VLAN?'), questionId: 'typed', replace: true })],
+  ])('%s while reserving quota prevents the Groq request and returns the tokens', async (_name, act) => {
+    const { l, release } = await slowLedger();
+    const { groq, calls } = countingGroq();
+    const { s } = session({ 'groq-120b': groq, simulated: createSimulatedAnswer(0) }, l);
+    const req = { ...request(), questionId: 'a' };
+    const running = s.handle(req);
+    await new Promise((r) => setTimeout(r, 10)); // now waiting on the quota write
+    act(s, 'a');
+    release();
+    await running;
+    expect(calls.n).toBe(0);
+    expect(l.usedInLast(1).units).toBe(0); // reservation settled to zero tokens
   });
 });

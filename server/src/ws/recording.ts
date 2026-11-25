@@ -8,6 +8,8 @@ const ACK_INTERVAL_MS = 1000;
 /** No audio for this long counts as end of speech (also covers Pause). */
 const IDLE_FINALIZE_MS = 1000;
 const STATS_INTERVAL_MS = 1000;
+/** Upper bound for Stop to wait on the last transcription (Groq requests time out at 20 s). */
+const STOP_FLUSH_MS = 25_000;
 
 type FinalMessage = Extract<ServerMessageBody, { type: 'transcript.final' }>;
 
@@ -40,11 +42,12 @@ export class Recording {
     this.socket = socket;
     this.maxAudioMs = maxAudioMs;
     this.stt = createStt({
-      partial: (text) => this.emit({ type: 'transcript.partial', segmentId: this.segmentId(), text }),
+      partial: (text) => this.emit({ type: 'transcript.partial', sessionId: this.id, segmentId: this.segmentId(), text }),
       final: (text, startMs, endMs, latencyMs) => {
         this.finalSeq += 1;
         const final: FinalMessage = {
           type: 'transcript.final',
+          sessionId: this.id,
           segmentId: this.segmentId(),
           finalSeq: this.finalSeq,
           text,
@@ -88,7 +91,7 @@ export class Recording {
       return;
     }
     if (seq > this.lastSeq + 1) {
-      this.emit({ type: 'transcript.gap', fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
+      this.emit({ type: 'transcript.gap', sessionId: this.id, fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
     }
     this.lastSeq = seq;
     this.stt.push(samples, seq * FRAME_MS);
@@ -114,15 +117,24 @@ export class Recording {
     this.stt.discardPartial();
   }
 
-  stop(): void {
+  /**
+   * Stop: close the last segment and wait (bounded) for its transcription, so the final text still
+   * reaches the client. The caller disposes afterwards.
+   */
+  async stop(maxWaitMs = STOP_FLUSH_MS): Promise<void> {
     this.clearIdleTimer();
     this.stt.finalizeNow();
     this.ack();
+    if (!this.stt.flush) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([this.stt.flush(), new Promise<void>((r) => (timer = setTimeout(r, maxWaitMs)))]);
+    clearTimeout(timer);
   }
 
   dispose(): void {
     this.clearIdleTimer();
     clearInterval(this.statsTimer);
+    this.stt.dispose?.();
     this.socket = null;
   }
 

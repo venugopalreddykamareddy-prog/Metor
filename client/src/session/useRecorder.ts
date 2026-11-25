@@ -7,6 +7,7 @@ import { AudioBuffer } from './audioBuffer.ts';
 import {
   applyTranscript,
   clearTranscript,
+  acceptsTranscript,
   dropPartial,
   emptyTranscript,
   type Transcript,
@@ -15,6 +16,9 @@ import {
 
 export type RecorderPhase = 'idle' | 'starting' | 'recording' | 'paused';
 export type TranscriptionMode = 'simulated' | 'webspeech' | 'groq';
+
+/** Thrown by a start that was cancelled while the mic was opening. */
+const CANCELLED = new Error('recording start cancelled');
 
 export interface AudioStats {
   frames: number;
@@ -83,7 +87,16 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   }, []);
 
   /** Stops the mic and forgets the session. Used by stop, logout, auth expiry and terminal failures. */
+  // Bumped by release(): a start() still waiting for the mic must not take it over afterwards
+  // (logout, auth expiry, unmount or Stop during the permission prompt).
+  const startGenRef = useRef(0);
+
+  // The recording just stopped: its last transcription may still arrive (bounded on the server).
+  const finishingRef = useRef<string | null>(null);
+
   const release = useCallback(() => {
+    startGenRef.current += 1;
+    finishingRef.current = sessionIdRef.current;
     activeRef.current?.stop();
     activeRef.current = null;
     sessionIdRef.current = null;
@@ -121,7 +134,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
         case 'transcript.partial':
         case 'transcript.final':
         case 'transcript.gap':
-          applyMessage(msg);
+          if (acceptsTranscript(msg.sessionId, sessionIdRef.current, finishingRef.current)) applyMessage(msg);
           break;
         case 'answer.header':
         case 'answer.delta':
@@ -181,6 +194,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     ws.start();
     return () => {
       ws.stop();
+      startGenRef.current += 1;
       activeRef.current?.stop();
       activeRef.current = null;
     };
@@ -194,7 +208,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   }, [phase]);
 
   /** Server modes: worklet capture streamed over the WebSocket. */
-  const startServerRecording = async (mode: 'simulated' | 'groq'): Promise<ActiveRecording> => {
+  const startServerRecording = async (mode: 'simulated' | 'groq', gen: number): Promise<ActiveRecording> => {
     seqRef.current = 0;
     sessionReadyRef.current = false;
     sessionIdRef.current = null;
@@ -206,6 +220,11 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
       bufferRef.current.add(seq, frame);
       if (sessionReadyRef.current) wsRef.current?.sendBinary(frame);
     });
+    if (gen !== startGenRef.current) {
+      // Cancelled while the mic opened: release it and never tell the server to start.
+      capture.stop();
+      throw CANCELLED;
+    }
     wsRef.current?.send({ type: 'session.start', mode, source: 'mic' });
     return {
       mode,
@@ -219,11 +238,16 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   };
 
   /** Web Speech: recognition runs in the browser on our own mic track; no audio goes to the Metor server. */
-  const startBrowserRecording = async (): Promise<ActiveRecording> => {
+  const startBrowserRecording = async (gen: number): Promise<ActiveRecording> => {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
     const stopTracks = () => stream.getTracks().forEach((t) => t.stop());
+    if (gen !== startGenRef.current) {
+      // Cancelled while the mic opened: release it and never start recognition.
+      stopTracks();
+      throw CANCELLED;
+    }
     const track = stream.getAudioTracks()[0];
     if (!track) {
       stopTracks();
@@ -277,13 +301,23 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     lastFinalSeqRef.current = 0;
     setTranscript(emptyTranscript);
     setLatencies([]);
+    finishingRef.current = null; // late text from the previous recording is no longer shown
+    const gen = startGenRef.current;
+    let started: ActiveRecording;
     try {
-      activeRef.current = mode === 'webspeech' ? await startBrowserRecording() : await startServerRecording(mode);
+      started = mode === 'webspeech' ? await startBrowserRecording(gen) : await startServerRecording(mode, gen);
     } catch (err) {
+      if (gen !== startGenRef.current) return;
       setPhase('idle');
       setError(micErrorMessage(err));
       return;
     }
+    if (gen !== startGenRef.current) {
+      // Cancelled while the mic was opening: release it at once, never record in the background.
+      started.stop();
+      return;
+    }
+    activeRef.current = started;
     timeRef.current = { total: 0, since: Date.now() };
     setElapsedMs(0);
     setPhase('recording');

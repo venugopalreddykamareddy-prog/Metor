@@ -109,13 +109,14 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
           case 'answer.cancel':
             answers.cancel(msg.questionId);
             break;
-          case 'session.stop':
+          case 'session.stop': {
             if (!recording) return;
-            recording.stop();
-            opts.recordings.remove(recording.id);
-            request.log.info({ sessionId: recording.id }, 'recording stopped');
-            recording = null;
+            const stopping = recording;
+            recording = null; // later audio is refused; the last final can still arrive
+            request.log.info({ sessionId: stopping.id }, 'recording stopped');
+            void stopping.stop().finally(() => opts.recordings.remove(stopping.id));
             break;
+          }
         }
       });
 
