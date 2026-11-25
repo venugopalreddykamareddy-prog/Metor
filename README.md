@@ -10,13 +10,23 @@ Metor is a personal project: a browser app that will transcribe speech, spot que
 | 1. Web foundation | Done (PR #2) |
 | 2. Login, mic capture, simulated transcription | Done (PR #4) |
 | 3. Real transcription: Browser speech and Groq Whisper | Done (PR #5) |
-| 4. Question extraction and answers: split questions out of continuous speech, validate them (false premises, made-up terms, mishearings), stream answers from Groq's free tier, one request per question | In review (PR #6) |
-| 5–9. Resume grounding and experience checks, practice mode, desktop app, hardening, release | Planned |
+| 4. Question extraction and answers: split questions out of continuous speech, validate them (false premises, made-up terms, mishearings), stream answers from Groq's free tier, one request per question | Done (PR #6, review fixes PR #8; four manual evaluation items deferred) |
+| 5. Knowledge base: resume, job description, verified stories, internal terms; grounded answers and STAR; opt-in session history | Done (PR #7; owner's manual acceptance passed) |
+| 6–9. Interview profiles and practice mode, desktop app, hardening, release | Planned |
 | 10–12. Camera preview, presence coaching, disclosed gaze correction | Planned (no video work yet) |
+| 13–15. Coding Interview Mode: problems, practice levels, sandboxed execution (needs a security ADR), design practice | Planned |
 
 Details for every phase: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
-### What works (through Phase 4, in review)
+### What works (through Phase 5)
+
+From Phase 5:
+
+- **Knowledge base**, stored only in this browser: resume, job descriptions, experience stories, projects, skills, internal terms and reference notes, each marked verified, theoretical or hypothetical; `.txt`/`.md` import. For each question only a few matching excerpts are sent with it, and the panel names the provider that receives them.
+- **Grounded answers**: experience is claimed only from verified items; behavioral questions follow STAR from a matching verified story, or say no verified experience is loaded. Introductions retrieve the resume summary.
+- **Session history** is off by default; when on, it's saved after the last transcription arrives, expires after 7/30/90 days, and can be exported or deleted (Delete everything included).
+
+From Phase 4:
 
 Metor transcribes what you say, picks out the questions, and streams a suggested answer for each.
 

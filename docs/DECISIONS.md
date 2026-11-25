@@ -241,3 +241,14 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 **Amended again 2026-11-24 (owner: accuracy over ~300 tokens per answer):** the default is back to 120B with medium reasoning and 1,000 / 1,400 / 2,200 budgets; 20B with low reasoning and 256 / 512 / 1024 is the optional fast mode. Budgets and effort are set per model. The short prompt, cache, selective context and token tracking stay. The prompt now spells out premise traps and forbids substitute settings or commands for unrecognized terms, its examples no longer come from the evaluation sets (a test enforces this), and the UI warns about specific settings named next to an unrecognized term. These prompt changes haven't been measured live yet.
 
 **Consequences:** Slightly slower first word and about 10% more tokens per answer on the free tier. Wrong-premise detection is still not reliable with this model (see docs/ANSWER_EVALUATION.md); a larger evaluation run and possibly a stronger free model are needed before the ≥ 85% assessment target can be claimed.
+
+---
+
+## ADR-015: Knowledge base in the browser, local keyword retrieval
+
+**Status:** Accepted · 2026-11-25 (Phase 5)
+
+**Decision:** KB items and opted-in sessions live in one IndexedDB database in the user's browser, through the platform API (no wrapper library); the server stores none of it. Per question the browser picks up to 6 excerpts by keyword overlap (paragraph/bullet chunks, internal terms named in the question always included) and sends them in `answer.request.kb`, validated at the server. Grounding and STAR rules go in the user message only when they apply, so ordinary questions cost no extra tokens. Engines must be marked as allowed to receive personal data (`RECEIVES_PERSONAL_DATA`); the Gemini free tier never is.
+
+**Consequences:** No embeddings, vector store or new dependency. Retrieval is lexical, so a story described in different words may be missed; the user can untick items or add keywords to titles. The KB doesn't follow the user to another browser; export covers backup.
+

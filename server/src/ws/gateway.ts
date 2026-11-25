@@ -114,7 +114,10 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
             const stopping = recording;
             recording = null; // later audio is refused; the last final can still arrive
             request.log.info({ sessionId: stopping.id }, 'recording stopped');
-            void stopping.stop().finally(() => opts.recordings.remove(stopping.id));
+            void stopping.stop().finally(() => {
+              send(socket, { type: 'session.stopped', sessionId: stopping.id });
+              opts.recordings.remove(stopping.id);
+            });
             break;
           }
         }

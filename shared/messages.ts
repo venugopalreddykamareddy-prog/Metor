@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { ASSESSMENTS, QUESTION_TYPES } from './answerFormat.ts';
 import { FRAME_SAMPLES } from './audio.ts';
+import { MAX_SNIPPETS, kbSnippetSchema } from './kb.ts';
 
 export { FRAME_MS, FRAME_SAMPLES, SAMPLE_RATE } from './audio.ts';
 export const AUDIO_HEADER_BYTES = 4;
@@ -43,6 +44,8 @@ const answerRequest = z.strictObject({
   /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
   earlier: z.array(z.string().max(300)).max(10).optional(),
   isFollowUp: z.boolean(),
+  /** Knowledge-base excerpts picked locally for this question (Phase 5); never the whole KB. */
+  kb: z.array(kbSnippetSchema).max(MAX_SNIPPETS).optional(),
   /** The user asked this themselves: stop the answer in flight and drop waiting ones (else it queues). */
   replace: z.boolean().optional(),
   /** Regenerate: skip the answer cache and make a new request. */
@@ -72,6 +75,8 @@ export const errorCodeSchema = z.enum([
 
 export const serverMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('session.started'), ...envelope, sessionId }),
+  // Sent once a stopped recording's last transcription has arrived (or the bounded wait ran out).
+  z.strictObject({ type: z.literal('session.stopped'), ...envelope, sessionId }),
   z.strictObject({ type: z.literal('session.resumed'), ...envelope, sessionId, nextAudioSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('audio.ack'), ...envelope, seq: z.number().int().min(0) }),
   // What the server received in the last second; levelDb is the RMS level (-100 = silence, 0 = full scale).

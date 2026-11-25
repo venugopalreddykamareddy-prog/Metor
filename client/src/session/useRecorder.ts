@@ -17,6 +17,8 @@ import {
 export type RecorderPhase = 'idle' | 'starting' | 'recording' | 'paused';
 export type TranscriptionMode = 'simulated' | 'webspeech' | 'groq';
 
+const FINALIZE_TIMEOUT_MS = 30_000;
+
 /** Thrown by a start that was cancelled while the mic was opening. */
 const CANCELLED = new Error('recording start cancelled');
 
@@ -94,9 +96,25 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   // The recording just stopped: its last transcription may still arrive (bounded on the server).
   const finishingRef = useRef<string | null>(null);
 
+  // True from Stop until the server confirms the last transcription arrived (bounded): history is
+  // saved only after that, so it includes the final Whisper segment.
+  const [finalizing, setFinalizing] = useState(false);
+  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endFinalizing = useCallback(() => {
+    if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
+    finalizeTimerRef.current = null;
+    setFinalizing(false);
+  }, []);
+
   const release = useCallback(() => {
     startGenRef.current += 1;
     finishingRef.current = sessionIdRef.current;
+    if (sessionIdRef.current) {
+      // Server modes: wait for session.stopped, at most a little over the server's 25 s bound.
+      setFinalizing(true);
+      if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
+      finalizeTimerRef.current = setTimeout(endFinalizing, FINALIZE_TIMEOUT_MS);
+    }
     activeRef.current?.stop();
     activeRef.current = null;
     sessionIdRef.current = null;
@@ -115,6 +133,9 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
 
     const handleMessage = (msg: ServerMessage) => {
       switch (msg.type) {
+        case 'session.stopped':
+          if (msg.sessionId === finishingRef.current) endFinalizing();
+          break;
         case 'session.started':
           sessionIdRef.current = msg.sessionId;
           sessionReadyRef.current = true;
@@ -302,6 +323,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     setTranscript(emptyTranscript);
     setLatencies([]);
     finishingRef.current = null; // late text from the previous recording is no longer shown
+    endFinalizing();
     const gen = startGenRef.current;
     let started: ActiveRecording;
     try {
@@ -355,6 +377,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     transcript,
     error,
     quotaExhausted,
+    finalizing,
     elapsedMs,
     audioStats,
     latencies,
