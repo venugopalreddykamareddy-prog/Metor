@@ -202,3 +202,22 @@ const WHISPER_TERMS = [
   'BGP', 'OSPF', 'EIGRP', 'MPLS', 'SD-WAN', 'DNS', 'TLS', 'Palo Alto', 'Zscaler', 'F5 BIG-IP', 'Wireshark',
 ];
 export const WHISPER_PROMPT = `Technical interview about SRE, cloud and networking: ${WHISPER_TERMS.join(', ')}.`;
+
+/** Groq's prompt limit is 224 tokens; about 4 characters a token, with margin. */
+const WHISPER_PROMPT_CHARS = 700;
+
+/**
+ * The Whisper prompt for a profile's own terms (Phase 6); the default prompt when none are given.
+ * Terms are spelling hints only: nothing is corrected from them.
+ */
+export function whisperPrompt(terms: readonly string[] | undefined): string {
+  const clean = [...new Set((terms ?? []).map((t) => t.replace(/[\r\n,]+/g, ' ').trim()).filter(Boolean))];
+  if (clean.length === 0) return WHISPER_PROMPT;
+  let prompt = 'Technical interview: ';
+  for (const [i, t] of clean.entries()) {
+    const next = `${prompt}${i ? ', ' : ''}${t}`;
+    if (next.length + 1 > WHISPER_PROMPT_CHARS) break;
+    prompt = next;
+  }
+  return `${prompt}.`;
+}

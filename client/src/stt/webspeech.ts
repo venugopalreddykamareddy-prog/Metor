@@ -64,7 +64,9 @@ const MAX_RESTARTS_PER_10S = 5;
  * Continuous recognition that restarts itself when the browser ends it (Chrome stops after
  * silence or about a minute). Fatal errors and restart loops are reported once via onFatal.
  */
-export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandlers): WebSpeech {
+/** `extraTerms`: the active profile's vocabulary, boosted with the built-in terms. */
+export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandlers, extraTerms: readonly string[] = []): WebSpeech {
+  const terms = [...new Set([...TECH_TERMS, ...extraTerms])];
   const Ctor = speechRecognitionCtor();
   if (!Ctor) throw new Error('Speech recognition is not available in this browser.');
   const Phrase = (window as unknown as { SpeechRecognitionPhrase?: PhraseCtor }).SpeechRecognitionPhrase;
@@ -94,7 +96,7 @@ export function startWebSpeech(track: MediaStreamTrack, handlers: WebSpeechHandl
 
   const begin = () => {
     // Boosting technical terms helps where supported (Chrome 142+); some setups reject it.
-    recognition.phrases = usePhrases && Phrase ? TECH_TERMS.map((term) => new Phrase(term, 3)) : [];
+    recognition.phrases = usePhrases && Phrase ? terms.map((term) => new Phrase(term, 3)) : [];
     try {
       recognition.start(track);
       running = true;

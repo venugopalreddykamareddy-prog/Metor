@@ -93,7 +93,7 @@ export async function registerGateway(app: FastifyInstance, opts: GatewayOptions
             const createStt = opts.stt[msg.mode];
             if (!createStt) return sendError(socket, 'provider_unavailable', `${msg.mode} transcription is not configured`);
             if (recording) opts.recordings.remove(recording.id);
-            recording = opts.recordings.start(authId, socket, createStt);
+            recording = opts.recordings.start(authId, socket, createStt, msg.vocabulary ? { vocabulary: msg.vocabulary } : {});
             request.log.info({ sessionId: recording.id, mode: msg.mode }, 'recording started');
             send(socket, { type: 'session.started', sessionId: recording.id });
             break;

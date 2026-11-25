@@ -17,6 +17,8 @@ export interface SavedSession {
   mode: string;
   /** The clean transcript text; the raw recognizer text isn't kept. */
   transcript: string;
+  /** The profile it was recorded under; missing on pre-profile records = the default profile. */
+  profileId?: string;
   /** False when a new recording started before the last transcription arrived. */
   transcriptComplete: boolean;
   answers: SavedAnswer[];

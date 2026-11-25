@@ -252,3 +252,13 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No embeddings, vector store or new dependency. Retrieval is lexical, so a story described in different words may be missed; the user can untick items or add keywords to titles. The KB doesn't follow the user to another browser; export covers backup.
 
+---
+
+## ADR-016: Interview profiles with isolated data
+
+**Status:** Accepted · 2026-11-25 (Phase 6, decisions approved by the owner)
+
+**Decision:** Profiles live in the browser (IndexedDB v2 `profiles` store). KB items, saved sessions, practice questions and corrections belong to one profile; pre-profile data migrates to the `default` profile on upgrade. Sharing is an explicit per-item list (`sharedWith`), never automatic. Requests carry a small validated profile context (role, label, level, topics, answer preferences, id), which frames the prompt's domain line and is part of the server's answer-cache key; the client uses only same-profile answers as conversation context. Practice feedback reuses `answer.request` with a `practice` field, so it gets the same validation header, quota ledger, queue and cache; it defaults to GPT-OSS 120B with medium reasoning.
+
+**Consequences:** No new dependency or server storage. Switching profile is locked while recording. Profiles don't sync between browsers; export covers backup.
+

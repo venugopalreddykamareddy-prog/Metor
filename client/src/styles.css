@@ -387,3 +387,10 @@ button.link {
 .kb .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 button.danger { color: var(--bad); }
 .kb-used { font-size: 0.85em; margin: 0.25rem 0; }
+
+/* Interview profiles (Phase 6) */
+.profile-bar { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin: 0.5rem 0; }
+.profile-bar label { display: inline-flex; gap: 0.4rem; align-items: center; }
+.profile-edit fieldset { border: 1px solid var(--border); padding: 0.5rem; }
+.share { margin-left: 0.5rem; }
+.share .check { margin-right: 0.5rem; }

@@ -384,3 +384,29 @@ describe('AnswerSession cancellation during the quota write (PR #8 follow-up)', 
     expect(l.usedInLast(1).units).toBe(0); // reservation settled to zero tokens
   });
 });
+
+describe('AnswerSession with profiles and practice (Phase 6)', () => {
+  const profile = (id: string) => ({ id, role: 'sre' as const, label: 'Site Reliability Engineer', level: '', topics: [], prefs: { openers: true, star: true, examples: true } });
+
+  it('keeps answer caches apart per profile', () => {
+    const req = request('simulated', 'What is an SLO?');
+    expect(cacheKey({ ...req, profile: profile('a') })).not.toBe(cacheKey({ ...req, profile: profile('b') }));
+    expect(cacheKey({ ...req, profile: profile('a') })).toBe(cacheKey({ ...req, profile: profile('a'), questionId: 'other' }));
+  });
+
+  it('does not reuse a cached answer from another profile', async () => {
+    const { s, sent } = session({ simulated: createSimulatedAnswer(0) }, null);
+    await s.handle({ ...request('simulated', 'What is an SLO?'), questionId: 'a', profile: profile('a') });
+    await s.handle({ ...request('simulated', 'What is an SLO?'), questionId: 'b', profile: profile('b') });
+    expect(sent.find((m) => m.type === 'answer.done' && m.questionId === 'b')).toMatchObject({ cached: false });
+  });
+
+  it('streams practice feedback unclipped even when the question is flagged', async () => {
+    const body = 'SCORES: accuracy=2 relevance=3 communication=4 completeness=2\nAccuracy: You went along with the made-up term. Relevance: Mostly on topic.';
+    const groq = createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => sse(['TYPE: technical\nNOTE: Unknown term.\nASSESSMENT: unrecognized_term\nCLARIFY: What is it?\nANSWER:\n', body], null)) as unknown as typeof fetch });
+    const { s, text } = session({ 'groq-120b': groq }, await ledger());
+    await s.handle({ ...request('groq-120b', 'How do you tune Grafana Zorblex panels?'), practice: { answer: 'I set the Zorblex refresh to 5 s.' } });
+    expect(text()).toBe(body);
+  });
+});
+

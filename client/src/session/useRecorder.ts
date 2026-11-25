@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { encodeAudioFrame, type ClientMessageBody, type ServerMessage } from '../../../shared/messages.ts';
+import { VOCAB_MAX_TERMS, VOCAB_TERM_CHARS } from '../../../shared/profile.ts';
 import { startCapture, type Capture } from '../audio/capture.ts';
 import { WsClient, sameOriginWsUrl, type ConnectionStatus } from '../net/wsClient.ts';
 import { startWebSpeech, type WebSpeech } from '../stt/webspeech.ts';
@@ -92,6 +93,12 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   // Bumped by release(): a start() still waiting for the mic must not take it over afterwards
   // (logout, auth expiry, unmount or Stop during the permission prompt).
   const startGenRef = useRef(0);
+  // The active profile's terms, for the Whisper prompt and Web Speech phrase hints.
+  const vocabularyRef = useRef<readonly string[]>([]);
+  const vocabularyField = () => {
+    const terms = vocabularyRef.current.map((t) => t.trim().slice(0, VOCAB_TERM_CHARS)).filter(Boolean).slice(0, VOCAB_MAX_TERMS);
+    return terms.length ? { vocabulary: terms } : {};
+  };
 
   // The recording just stopped: its last transcription may still arrive (bounded on the server).
   const finishingRef = useRef<string | null>(null);
@@ -201,7 +208,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
           ws.send({ type: 'session.resume', sessionId: sessionIdRef.current, lastFinalSeq: lastFinalSeqRef.current });
         } else {
           // The connection dropped before session.start went out.
-          ws.send({ type: 'session.start', mode: serverModeRef.current, source: 'mic' });
+          ws.send({ type: 'session.start', mode: serverModeRef.current, source: 'mic', ...vocabularyField() });
         }
       },
       onMessage: handleMessage,
@@ -246,7 +253,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
       capture.stop();
       throw CANCELLED;
     }
-    wsRef.current?.send({ type: 'session.start', mode, source: 'mic' });
+    wsRef.current?.send({ type: 'session.start', mode, source: 'mic', ...vocabularyField() });
     return {
       mode,
       pause: () => capture.pause(),
@@ -278,7 +285,9 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     const recordingStart = Date.now();
     let speech: WebSpeech;
     try {
-      speech = startWebSpeech(track, {
+      speech = startWebSpeech(
+        track,
+        {
         onPartial: (text) => applyMessage({ type: 'transcript.partial', id: '', ts: Date.now(), segmentId: 'web', text }),
         onFinal: (text, startedAt, delayMs) =>
           applyMessage({
@@ -297,7 +306,9 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
           release();
           setError(`Recording stopped: ${message}`);
         },
-      });
+        },
+        vocabularyRef.current,
+      );
     } catch (err) {
       stopTracks();
       throw err;
@@ -313,7 +324,8 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     };
   };
 
-  const start = useCallback(async (mode: TranscriptionMode) => {
+  const start = useCallback(async (mode: TranscriptionMode, vocabulary: readonly string[] = []) => {
+    vocabularyRef.current = vocabulary;
     if (activeRef.current) return;
     if (mode !== 'webspeech' && !wsRef.current?.isOpen) return;
     setError(null);
