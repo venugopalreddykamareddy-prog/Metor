@@ -215,6 +215,11 @@ Provider budget alerts are **not** treated as hard caps; many are notifications 
 
 **Consequences:** No change to the $0 default. Answer quality starts with open-weight models on Groq, and the evaluation set (docs/ANSWER_EVALUATION.md) shows whether that's good enough before any paid option is considered.
 
+**Amended 2026-11-25 (owner's decision, after checking official docs; nothing built):**
+- **Groq stays the primary provider** for answers and transcription (Groq Whisper first, Browser speech as the consented fallback).
+- **ChatGPT plan usage ("Sign in with ChatGPT") is deferred** until Metor is officially eligible. OpenAI's docs say it's "currently offered to a select group of commercial partners" (waitlist). On a remote VM, OAuth has to finish on the user's own machine and the credential file is then copied over, which conflicts with the no-local-install rule. Plus has a five-hour usage limit shared with ChatGPT.
+- **Gemini free tier is an optional future provider, for practice only.** It needs its own quota ledger and token tracking, explicit consent before switching, and no resume, KB or other confidential content: unpaid input may be used to improve Google products and read by human reviewers. It must never fall back to a paid tier; linking billing to the project upgrades it to paid automatically. Not for users in the EEA, Switzerland or the UK. Free-tier rate limits appear only in AI Studio, and model IDs change often (e.g. `gemini-2.5-flash` routes to another model from 2026-12-01), so model IDs and limits must be re-checked when it's built (ADR-009).
+
 
 ---
 
