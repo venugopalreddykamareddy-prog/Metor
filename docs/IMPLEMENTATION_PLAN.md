@@ -204,7 +204,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 4 — Question understanding and streaming answers (in review, PR #6; implementation frozen 2026-11-25 at `914a46d`)
+## Phase 4 — Question understanding and streaming answers ✅ functional milestone (merged, PR #6; four manual evaluation items deferred)
 
 **Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
@@ -222,7 +222,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 **Acceptance** (status 2026-11-24; ✅ verified here, ⬜ open, with what's missing)
 
-**Remaining blockers (frozen 2026-11-25; no more code changes until the owner decides):** these four open items need manual runs on the owner's voice and free Groq budget, or a person to grade.
+**Deferred (owner approved Phase 4 as a functional milestone on 2026-11-25; these stay open and unchecked):** four manual evaluation items that need runs on the owner's voice and free Groq budget, or a person to grade.
 1. End-to-end latency with Groq answers from real speech, per transcription mode (NFR-2b, NFR-2 browser-side p50 < 1.5 s).
 2. Small-talk questions that reach the model on Groq: ≥ 7 of 8 `irrelevant` items without an answer card.
 3. Naturalness graded by a person (≥ 4/5).
