@@ -8,7 +8,7 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 |---|---|---|
 | Mock interview / self-practice | P0 | Primary design target |
 | Meeting assistance (notes, summaries, suggested questions) | P1 | |
-| Coding and system design practice | P1 | |
+| Coding and system design practice | P1 (spoken, Phase 6) / P2 (Coding Interview Mode, Phases 13–15) | SWE, SRE, DevOps, QA Automation, SDET |
 | Live interview assistance where AI use is **expressly permitted** | P1 | Session-start disclosure acknowledgement required |
 
 **Target technical profiles:** Site Reliability Engineer, Senior SRE, DevOps Engineer, Platform Engineer, Cloud Infrastructure Engineer, Network Engineer, Network Security Engineer, Cloud Network Engineer, Network Automation Engineer.
@@ -156,6 +156,26 @@ Before answering, Metor works out what kind of question it is and whether it res
 | FR-V2 | Coaching on eye contact, head position, posture, and lighting, computed without storing video | P2 (Phase 11) |
 | FR-V3 | Optional gaze correction and virtual-camera output, always disclosed to other participants and only where allowed | P2 (Phase 12) |
 
+### 2.10 Coding Interview Mode (Phases 13–15, planned)
+
+For mock interviews and self-practice, and for live coding sessions **only** where external AI help is explicitly permitted (same disclosure acknowledgement as live assistance). Reuses the answer provider interface: GPT-OSS 120B for coding reasoning, 20B optional; simulated in CI.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-C1 | Problem input by typed text and by speech (existing transcription), later from a user-provided screenshot | P2 (13; screenshot 15) |
+| FR-C2 | Languages: Python, Java, JavaScript, TypeScript, C++, Go, Bash, SQL | P2 (13) |
+| FR-C3 | Topics: arrays, strings, linked lists, trees, graphs, heaps, recursion, backtracking, sliding window, binary search, greedy, dynamic programming | P2 (13) |
+| FR-C4 | Problem understanding: restatement, constraint extraction, clarifying questions | P2 (13) |
+| FR-C5 | Brute-force then optimized solution; readable code with meaningful names; time and space complexity | P2 (13) |
+| FR-C6 | Step-by-step dry run, edge cases, generated test cases; visualization of the dry run | P2 (13; visualization 15) |
+| FR-C7 | Practice levels: hint only, guided, full solution | P2 (13) |
+| FR-C8 | Validation as in §2.2b: misleading premises, impossible constraints (e.g. "sort in O(1)"), invented libraries or language features | P2 (13) |
+| FR-C9 | Debugging help, alternative approaches, context-aware follow-ups (selective context, cache) | P2 (13) |
+| FR-C10 | Isolated execution of the user's or suggested code with CPU, memory, time and no-network limits; results come from real runs | P2 (14) |
+| FR-C11 | Never claim tests pass unless they ran; unexecuted code is labeled "not run" | P2 (13, enforced by 14) |
+| FR-C12 | System design and low-level design practice | P2 (15) |
+| FR-C13 | Coding evaluation set (easy/medium/hard, held-out problems): correctness, test pass rate, complexity accuracy, latency, tokens | P2 (13–14) |
+
 ## 3. Technical coverage (prompt and question-bank scope)
 
 **SRE / DevOps / Platform / Cloud:** SLIs, SLOs, SLAs, error budgets · incident management, RCA, on-call · Linux troubleshooting · Kubernetes, AKS, EKS, Docker concepts, Helm, ArgoCD · AWS, Azure (Front Door, Key Vault, Cosmos DB, Functions) · Datadog, Prometheus, Grafana, Splunk, OpenTelemetry · Terraform, Ansible · Azure DevOps, Jenkins, GitHub Actions, Octopus Deploy · Python, Bash · distributed systems, microservices, system design, HA, DR · payment platform reliability, PCI-compliant releases · TLS/SSL certificates · load balancing · automated remediation.
@@ -190,5 +210,5 @@ Targets are measured engineering goals, not guarantees. They depend on network a
 - Paid AI providers in the MVP (each requires an ADR; disabled by default).
 - Native mobile apps.
 - Multi-user accounts / cloud sync (single-user, local-first).
-- Executing generated commands.
+- Executing generated commands. (Sandboxed execution of code under test is a separate question for Phase 14 and needs its own ADR; generated shell commands are never run on the host.)
 - Any feature meant to hide Metor from meeting participants or screen sharing.

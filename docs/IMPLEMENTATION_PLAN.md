@@ -318,6 +318,44 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
+## Coding Interview Mode (Phases 13–15, planned)
+
+Added 2026-11-25 (REQUIREMENTS §2.10). Numbered after the existing phases so nothing is renumbered; the owner may schedule 13–15 before 10–12. Phase 6 stays spoken SRE practice. All three keep the standing rules: browser-based, simulated providers in CI, no Mac installs, $0, consent, and live use only where AI help is explicitly permitted.
+
+---
+
+## Phase 13 — Coding Interview Mode: problems, solutions, practice levels (planned)
+
+**Objective:** A separate mode for coding interviews (SWE, SRE, DevOps, QA Automation, SDET). FR-C1 (text, speech), C2–C9, C11, C13.
+
+**Key tasks:** problem panel fed by typed text or the existing transcript; one request per turn through the existing provider interface (GPT-OSS 120B default, 20B optional) with a compact coding prompt: restate → constraints → clarifying questions → brute force → optimized → code → complexity → dry run → edge cases → tests; hint / guided / full modes, each asking only for what it shows; premise and constraint checks reuse the §5.4 assessment header; context limited to the current problem, its code and the last turns; answer cache keyed on problem + code + mode. Until Phase 14, every code block and test is labeled "not run". Coding evaluation set (`eval/coding-problems.json`): easy/medium/hard problems with reference tests, plus a held-out set written before tuning, scored for correctness (by review until 14), complexity accuracy, latency and tokens.
+
+**Acceptance:** a problem gets restatement, constraints and at least one clarifying question before code; hint mode never reveals the full solution; an impossible-constraint and an invented-API problem are flagged, not answered as if valid; no answer claims tests passed; eval set runs in CI on simulated and manually on Groq.
+
+---
+
+## Phase 14 — Isolated code execution and test validation (planned)
+
+**Objective:** Run code and tests for real, so pass/fail comes from execution, not from the model. FR-C10, C11, C13 (pass rate).
+
+**Gate:** needs an ADR first. Hard rule 5 forbids executing generated commands; the ADR must decide whether sandboxed execution of code under test is allowed, by whom it's triggered (an explicit user click), and confirm that generated shell commands are still never run on the host. Bash and anything touching the network stay "not run" unless the sandbox can isolate them.
+
+**Key tasks:** compare sandbox options that need no Mac install and no paid service: in-browser WebAssembly runtimes and Web Workers (per language), versus a sandbox on the server. For each, verify from official docs which languages it covers, its download size, and how CPU, memory, time and network are limited: **TODO(verify)**, nothing chosen yet. Wall-clock and memory limits, no network, no file system beyond the sandbox, killed on timeout. Generated tests run locally, and only failures go back to the model (fewer AI calls). Languages without a safe runtime stay "not run".
+
+**Acceptance:** an infinite loop, a memory blow-up and a network call are each stopped and reported; pass/fail shown per test from real runs; eval set reports test pass rate per difficulty; no new paid service.
+
+---
+
+## Phase 15 — Screenshots, visualization, system design and low-level design (planned)
+
+**Objective:** FR-C1 (screenshot input), FR-C6 (visualization), FR-C12.
+
+**Key tasks:** screenshot input only from a file the user picks or pastes, never screen capture. Text extraction needs a vision-capable free model or a browser API; which one, its data policy and free limits are **TODO(verify)**. Until then the user pastes the text. Dry-run visualization (array pointers, tree and graph traversal) is drawn in the browser from the dry-run steps without another AI call. System design and LLD practice reuse the answer formats in REQUIREMENTS §2.3, with requirements → components → trade-offs and follow-ups.
+
+**Acceptance:** screenshot text is shown for the user to correct before it's used; visualization matches the dry run; design answers flag impossible requirements (§5.4) and keep to the selected length.
+
+---
+
 ## Testing strategy (all phases)
 
 | Level | Tool | Scope |
