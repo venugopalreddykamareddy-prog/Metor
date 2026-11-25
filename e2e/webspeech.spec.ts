@@ -193,3 +193,28 @@ test('scores a transcript against the accuracy script', async ({ page }) => {
   // Raw "s l o" counts as three wrong words and a missed term; the clean view fixes both.
   await expect(row.locator('td')).toHaveText(['Browser speech', '21.4%', '0.0%', '2/3', '3/3', /s$/, '—']);
 });
+
+test('logging out while the mic is still opening never starts recognition', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __releaseMic: () => void };
+    const gate = new Promise<void>((r) => (w.__releaseMic = r));
+    const inner = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      await gate;
+      return inner(c);
+    };
+  });
+  await page.goto('/');
+  await page.getByLabel('Passphrase').fill(E2E_PASSPHRASE);
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByLabel('Transcription').selectOption('webspeech');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByLabel('I understand and want to start recording').check();
+  await page.getByRole('button', { name: 'Start recording' }).click();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page.getByLabel('Passphrase')).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __releaseMic: () => void }).__releaseMic());
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __streams: MediaStream[] }).__streams.length)).toBe(1);
+  await expect.poll(() => liveTrackCount(page)).toBe(0);
+  expect(await page.evaluate(() => (window as unknown as { __recognitions: unknown[] }).__recognitions.length)).toBe(0);
+});

@@ -7,7 +7,7 @@ import { Recordings } from './recording.ts';
 // transcription stream (finding 2).
 
 function fakeSocket() {
-  const sent: { type: string; text?: string }[] = [];
+  const sent: { type: string; text?: string; sessionId?: string }[] = [];
   const socket = { OPEN: 1, readyState: 1, send: (data: string) => sent.push(JSON.parse(data) as { type: string }), close() {} };
   return { socket: socket as unknown as WebSocket, sent };
 }
@@ -40,7 +40,7 @@ describe('Recording stop and dispose', () => {
     const rec = recordings.start('auth', socket, factory);
     await rec.stop();
     recordings.remove(rec.id);
-    expect(sent.some((m) => m.type === 'transcript.final' && m.text === 'last words')).toBe(true);
+    expect(sent.some((m) => m.type === 'transcript.final' && m.text === 'last words' && m.sessionId === rec.id)).toBe(true);
     expect(state.disposed).toBe(true);
   });
 

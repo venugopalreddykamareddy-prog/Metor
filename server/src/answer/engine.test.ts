@@ -323,3 +323,41 @@ describe('Groq answer stream framing (secondary fixes)', () => {
   });
 });
 
+
+describe('AnswerSession cancellation during the quota write (PR #8 follow-up)', () => {
+  /** A ledger whose durable reservation waits until the test releases it. */
+  async function slowLedger() {
+    const l = await ledger();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const original = l.reserveDurable.bind(l);
+    l.reserveDurable = async (u) => {
+      await gate;
+      return original(u);
+    };
+    return { l, release };
+  }
+  const countingGroq = () => {
+    const calls = { n: 0 };
+    const groq = createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => (calls.n++, sse(['ANSWER:\nx'], null))) as unknown as typeof fetch });
+    return { groq, calls };
+  };
+
+  it.each([
+    ['Stop answer', (s: AnswerSession, id: string) => s.cancel(id)],
+    ['logout (close)', (s: AnswerSession) => s.close()],
+    ['a typed replacement', (s: AnswerSession) => void s.handle({ ...request('simulated', 'What is a VLAN?'), questionId: 'typed', replace: true })],
+  ])('%s while reserving quota prevents the Groq request and returns the tokens', async (_name, act) => {
+    const { l, release } = await slowLedger();
+    const { groq, calls } = countingGroq();
+    const { s } = session({ 'groq-120b': groq, simulated: createSimulatedAnswer(0) }, l);
+    const req = { ...request(), questionId: 'a' };
+    const running = s.handle(req);
+    await new Promise((r) => setTimeout(r, 10)); // now waiting on the quota write
+    act(s, 'a');
+    release();
+    await running;
+    expect(calls.n).toBe(0);
+    expect(l.usedInLast(1).units).toBe(0); // reservation settled to zero tokens
+  });
+});

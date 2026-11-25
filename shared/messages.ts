@@ -82,10 +82,13 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     bytes: z.number().int().min(0),
     levelDb: z.number().min(-100).max(0),
   }),
-  z.strictObject({ type: z.literal('transcript.partial'), ...envelope, segmentId: z.string(), text: z.string() }),
+  // sessionId: the recording the text belongs to, so a late final from a stopped recording can't
+  // land in the next one (the client drops other recordings' messages).
+  z.strictObject({ type: z.literal('transcript.partial'), ...envelope, sessionId: sessionId.optional(), segmentId: z.string(), text: z.string() }),
   z.strictObject({
     type: z.literal('transcript.final'),
     ...envelope,
+    sessionId: sessionId.optional(),
     segmentId: z.string(),
     finalSeq: z.number().int().min(1),
     text: z.string(),
@@ -94,7 +97,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     /** Time from the end of the audio segment to this final, when the provider measures it. */
     latencyMs: z.number().min(0).optional(),
   }),
-  z.strictObject({ type: z.literal('transcript.gap'), ...envelope, fromMs: z.number().min(0), toMs: z.number().min(0) }),
+  z.strictObject({ type: z.literal('transcript.gap'), ...envelope, sessionId: sessionId.optional(), fromMs: z.number().min(0), toMs: z.number().min(0) }),
   z.strictObject({
     type: z.literal('answer.header'),
     ...envelope,

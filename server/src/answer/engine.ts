@@ -111,23 +111,31 @@ export class AnswerSession {
     const reserved = estimateTokens(messages) + maxTokens;
     const usesQuota = req.engine !== 'simulated';
     let ticket: number | null = null;
-    if (usesQuota) {
-      // Durable before the request: a failed ledger write means no provider call (fail closed).
-      const r = this.deps.ledger ? await this.deps.ledger.reserveDurable({ requests: 1, units: reserved }) : ({ ok: false, reason: 'quota' } as const);
-      if (!r.ok && r.reason === 'storage') {
-        return fail('provider_unavailable', "Metor couldn't record quota usage, so it didn't call Groq. Check the server's data folder.");
-      }
-      if (!r.ok) return fail('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Try again shortly or use Simulated.");
-      ticket = r.ticket;
-    }
-
-    this.answered += 1;
+    // Registered before any wait, so Stop answer, a typed replacement or logout during the quota
+    // write still prevents the provider request.
     const controller = new AbortController();
     this.inFlight = { questionId: req.questionId, controller };
-    const started = Date.now();
+    let started = Date.now();
     let firstTokenMs: number | null = null;
 
     try {
+      if (usesQuota) {
+        // Durable before the request: a failed ledger write means no provider call (fail closed).
+        const r = this.deps.ledger ? await this.deps.ledger.reserveDurable({ requests: 1, units: reserved }) : ({ ok: false, reason: 'quota' } as const);
+        if (r.ok) ticket = r.ticket;
+        if (controller.signal.aborted || this.closed) {
+          // Cancelled while reserving: no request was made, so no tokens were used.
+          if (r.ok) this.deps.ledger?.settle(r.ticket, reserved, 0);
+          return;
+        }
+        if (!r.ok && r.reason === 'storage') {
+          return fail('provider_unavailable', "Metor couldn't record quota usage, so it didn't call Groq. Check the server's data folder.");
+        }
+        if (!r.ok) return fail('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Try again shortly or use Simulated.");
+      }
+      this.answered += 1;
+      started = Date.now(); // first-word timing starts at the provider request, as before
+
       // Every wait is raced with cancellation, so a provider that ignores the abort can't hold the queue.
       const cancelled = new Promise<null>((r) => controller.signal.addEventListener('abort', () => r(null), { once: true }));
       const stream = await Promise.race([provider({ request: req, messages, maxTokens, signal: controller.signal }), cancelled]);

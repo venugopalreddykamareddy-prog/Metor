@@ -42,11 +42,12 @@ export class Recording {
     this.socket = socket;
     this.maxAudioMs = maxAudioMs;
     this.stt = createStt({
-      partial: (text) => this.emit({ type: 'transcript.partial', segmentId: this.segmentId(), text }),
+      partial: (text) => this.emit({ type: 'transcript.partial', sessionId: this.id, segmentId: this.segmentId(), text }),
       final: (text, startMs, endMs, latencyMs) => {
         this.finalSeq += 1;
         const final: FinalMessage = {
           type: 'transcript.final',
+          sessionId: this.id,
           segmentId: this.segmentId(),
           finalSeq: this.finalSeq,
           text,
@@ -90,7 +91,7 @@ export class Recording {
       return;
     }
     if (seq > this.lastSeq + 1) {
-      this.emit({ type: 'transcript.gap', fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
+      this.emit({ type: 'transcript.gap', sessionId: this.id, fromMs: (this.lastSeq + 1) * FRAME_MS, toMs: seq * FRAME_MS });
     }
     this.lastSeq = seq;
     this.stt.push(samples, seq * FRAME_MS);
