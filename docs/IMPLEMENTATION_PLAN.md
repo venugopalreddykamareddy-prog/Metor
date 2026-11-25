@@ -204,7 +204,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 4 — Question understanding and streaming answers (in review, PR #6)
+## Phase 4 — Question understanding and streaming answers (in review, PR #6; implementation frozen 2026-11-25 at `914a46d`)
 
 **Objective:** Extract questions from the clean transcript, work out what kind of question each is, check it before answering, and stream a natural answer, with at most one LLM request per question (ARCHITECTURE §5.1, §5.2, §5.4). Raw transcript, clean transcript, and extracted questions stay separate.
 
@@ -221,6 +221,12 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - Evaluation runner over `eval/answer-questions.json` (simulated in CI; manual free-tier run).
 
 **Acceptance** (status 2026-11-24; ✅ verified here, ⬜ open, with what's missing)
+
+**Remaining blockers (frozen 2026-11-25; no more code changes until the owner decides):** these five open items all need manual runs on the owner's voice and free Groq budget, or a person to grade.
+1. End-to-end latency with Groq answers from real speech, per transcription mode (NFR-2b, NFR-2 browser-side p50 < 1.5 s).
+2. Small-talk questions that reach the model on Groq: ≥ 7 of 8 `irrelevant` items without an answer card.
+3. Naturalness graded by a person (≥ 4/5).
+4. The rest of the answer evaluation set on Groq: 85 of 113 questions, assessment ≥ 85% (now 82% on 28). Clarification-only answers (7ab2b69) were not re-run live.
 - [x] Carried from Phase 3: Browser speech and Groq Whisper measured on the accuracy script by the owner (2026-11-25), recorded in docs/STT_EVALUATION.md: WER 30.1% raw / 28.2% clean vs 10.9%, terms 18–20/34 vs 26/34, latency 0.47 s vs 0.35 s. Groq Whisper is preselected when configured and within quota.
 - [x] 0 duplicate requests in the test script; never more than one LLM request per detected question (tracker unit tests, `questionId` idempotency test, one `AnswerSession.handle` per question in the eval runner)
 - [x] Extraction fixture (`eval/question-extraction.json`): 31/31 word for word; holdout 13/15 blind, then 15/15; no answer for filler-only and incomplete cases (unit tests)
