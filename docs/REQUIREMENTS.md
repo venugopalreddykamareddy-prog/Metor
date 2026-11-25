@@ -13,6 +13,8 @@ Priorities: **P0** = MVP (Phases 1–4), **P1** = Phases 5–6, **P2** = Phases 
 
 **Target technical profiles:** Site Reliability Engineer, Senior SRE, DevOps Engineer, Platform Engineer, Cloud Infrastructure Engineer, Network Engineer, Network Security Engineer, Cloud Network Engineer, Network Automation Engineer.
 
+**Interview profiles (Phase 6 onward):** QA Engineer, QA Automation Engineer, SDET, SRE, DevOps, Cloud, Networking, Software Engineer, and **custom roles** defined by the user (title, level, topics, optionally a job description from the KB). A profile selects the question bank, topic coverage, answer emphasis and, from Phase 13, coding languages and topics. Profiles are local settings; they don't change validation, consent or provider rules.
+
 ## 2. Functional requirements
 
 ### 2.1 Audio and transcription
@@ -138,7 +140,7 @@ Before answering, Metor works out what kind of question it is and whether it res
 
 ### 2.7 Practice mode (Phase 6)
 
-- Question bank per profile and topic; random or targeted drills.
+- Question bank per interview profile (§1, including custom roles) and topic; random or targeted drills.
 - User answers aloud; AI gives feedback on accuracy, structure, and delivery.
 - Track weak topics across sessions.
 

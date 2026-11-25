@@ -268,7 +268,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ## Phase 6 — SRE and technical interview practice
 
-**Objective:** Practice mode with question bank across SRE and networking profiles, feedback on spoken answers, weak-topic tracking, session summaries and history.
+**Objective:** Practice mode with question banks per interview profile (QA, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering, and user-defined custom roles; REQUIREMENTS §1), feedback on spoken answers, weak-topic tracking, session summaries and history.
 
 **Acceptance:** question bank covers every topic group in REQUIREMENTS §3; feedback rubric documented; summaries generated within cost limits.
 
@@ -338,7 +338,7 @@ Added 2026-11-25 (REQUIREMENTS §2.10). Numbered after the existing phases so no
 
 **Objective:** Run code and tests for real, so pass/fail comes from execution, not from the model. FR-C10, C11, C13 (pass rate).
 
-**Gate:** needs an ADR first. Hard rule 5 forbids executing generated commands; the ADR must decide whether sandboxed execution of code under test is allowed, by whom it's triggered (an explicit user click), and confirm that generated shell commands are still never run on the host. Bash and anything touching the network stay "not run" unless the sandbox can isolate them.
+**Gate:** Hard rule 5 stays in force. No execution work starts without a separate security ADR **and** the owner's explicit approval of it. The ADR must decide whether sandboxed execution of code under test is allowed, by whom it's triggered (an explicit user click), and confirm that generated shell commands are still never run on the host. Bash and anything touching the network stay "not run" unless the sandbox can isolate them.
 
 **Key tasks:** compare sandbox options that need no Mac install and no paid service: in-browser WebAssembly runtimes and Web Workers (per language), versus a sandbox on the server. For each, verify from official docs which languages it covers, its download size, and how CPU, memory, time and network are limited: **TODO(verify)**, nothing chosen yet. Wall-clock and memory limits, no network, no file system beyond the sandbox, killed on timeout. Generated tests run locally, and only failures go back to the model (fewer AI calls). Languages without a safe runtime stay "not run".
 
