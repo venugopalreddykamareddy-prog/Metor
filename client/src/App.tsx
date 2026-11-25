@@ -9,7 +9,11 @@ import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTransc
 import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
 import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
-import { retrieve } from '../../shared/kb.ts';
+import { retrieve, visibleTo, type KbItem } from '../../shared/kb.ts';
+import { DEFAULT_PROFILE_ID, profileContext } from '../../shared/profile.ts';
+import { deleteProfile, type PracticeQuestion } from './profile/profiles.ts';
+import { profileStore, useProfiles } from './profile/useProfiles.ts';
+import { ProfileBar } from './ui/ProfileBar.tsx';
 import { deleteDatabase, idbStore } from './kb/db.ts';
 import { useKb } from './kb/useKb.ts';
 import { RETENTION_DAYS, exportJson, purgeExpired, saveSession, sessionAnswers, type SavedSession } from './session/history.ts';
@@ -45,6 +49,7 @@ export function App() {
 }
 
 const sessionStore = idbStore<SavedSession>('sessions');
+const questionStore = idbStore<PracticeQuestion>('questions');
 
 const MODE_LABEL: Record<TranscriptionMode, string> = {
   simulated: 'Simulated',
@@ -66,8 +71,15 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const answerHandler = useRef<(msg: AnswerMessage) => void>(() => {});
   const recorder = useRecorder(onLoggedOut, (msg) => answerHandler.current(msg));
   const kb = useKb();
+  const profiles = useProfiles();
+  const profile = profiles.active;
+  // The active profile's items plus those explicitly shared with it; nothing else (Phase 6).
+  const kbItems = kb.items.filter((i) => visibleTo(i, profile.id));
   // Only the excerpts that match this question and what was said just before it (FR-K2).
-  const answers = useAnswers(recorder.send, (q) => retrieve(kb.items, [q.text, ...q.statements].join(' ')));
+  const answers = useAnswers(recorder.send, (q) => ({
+    kb: retrieve(kbItems, [q.text, ...q.statements].join(' ')),
+    profile: profileContext(profile),
+  }));
   answerHandler.current = answers.handleMessage;
 
   const available: TranscriptionMode[] = [
@@ -107,7 +119,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
     setPicked(m);
     save('mode', m);
   };
-  const corrections = useCorrections();
+  const corrections = useCorrections(profile.id);
   // Hand edits of single sentences, for the current recording only.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const { phase, connection, latencies } = recorder;
@@ -138,7 +150,9 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
 
   // One entry per question; regenerated answers are kept as versions (grouping.ts).
   const repeats = questions.questions.flatMap((q) => (q.repeatOf ? [{ sourceId: q.repeatOf, at: q.firstSeenAt }] : []));
-  const groups = useMemo(() => groupAnswers(answers.cards, repeats), [answers.cards, repeats.map((r) => `${r.sourceId}@${r.at}`).join()]);
+  // Answers are shown only under the profile they were asked in.
+  const profileCards = useMemo(() => answers.cards.filter((c) => c.profileId === profile.id), [answers.cards, profile.id]);
+  const groups = useMemo(() => groupAnswers(profileCards, repeats), [profileCards, repeats.map((r) => `${r.sourceId}@${r.at}`).join()]);
   const latest = groups.at(-1) ?? null;
   const pending =
     questions.questions.filter((q) => (q.status === 'waiting' || q.status === 'ready') && q.firstSeenAt > (latest?.lastActivity ?? 0)).at(-1)
@@ -173,6 +187,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
         id: crypto.randomUUID(),
         startedAt: pendingSave.startedAt,
         mode: pendingSave.mode,
+        profileId: profile.id,
         transcript: cleanTranscriptText(clean),
         transcriptComplete,
         answers: sessionAnswers(answers.cards, pendingSave.startedAt),
@@ -188,6 +203,14 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const stopRecording = () => {
     recorder.stop();
     setPendingSave({ startedAt: recordingStartedAt.current, mode: MODE_LABEL[activeMode] });
+  };
+  /** Deletes a profile and everything it owns, then switches to a remaining one. */
+  const removeProfile = async (id: string) => {
+    if (!(await deleteProfile({ profiles: profileStore, kb: idbStore<KbItem>('kb'), sessions: sessionStore, questions: questionStore }, id))) return;
+    const rest = await profiles.reload();
+    if (rest[0]) profiles.select(rest[0].id);
+    kb.reload();
+    void purgeExpired(sessionStore, Date.now()).then(setSessions);
   };
   const deleteSession = (id: string) => void sessionStore.delete(id).then(() => setSessions((all) => all.filter((x) => x.id !== id)));
   const exportAll = () => {
@@ -226,6 +249,15 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           Log out
         </button>
       </header>
+
+      <ProfileBar
+        profiles={profiles.profiles}
+        active={profile}
+        locked={phase !== 'idle'}
+        onSelect={profiles.select}
+        onSave={(p) => void profiles.saveProfile(p)}
+        onDelete={(id) => void removeProfile(id)}
+      />
 
       <div className="controls">
         <label className="mode">
@@ -406,7 +438,9 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
 
         <KnowledgeBase
           provider={engine === 'simulated' ? null : ENGINE_LABEL[engine]}
-          items={kb.items}
+          profileId={profile.id}
+          profiles={profiles.profiles.map((p) => ({ id: p.id, name: p.name }))}
+          items={kbItems}
           error={kb.error}
           onSave={kb.save}
           onRemove={kb.remove}
@@ -414,7 +448,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           retentionDays={retentionDays}
           onPersist={(on) => setPersist(on ? 'on' : 'off')}
           onRetention={setRetentionDays}
-          sessions={sessions}
+          sessions={sessions.filter((x) => (x.profileId ?? DEFAULT_PROFILE_ID) === profile.id)}
           onDeleteSession={deleteSession}
           onExport={exportAll}
           onDeleteEverything={deleteEverything}
@@ -439,7 +473,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
             recordingStartedAt.current = Date.now();
             setOverrides({});
             questions.reset(); // sentence keys restart with each recording
-            void recorder.start(mode);
+            void recorder.start(mode, profile.vocabulary);
           }}
         />
       )}

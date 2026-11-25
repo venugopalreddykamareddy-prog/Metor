@@ -4,6 +4,7 @@
 // whole KB.
 
 import { z } from 'zod';
+import { DEFAULT_PROFILE_ID } from './profile.ts';
 
 export const KB_KINDS = ['resume', 'job', 'story', 'project', 'skill', 'term', 'reference'] as const;
 export const PROVENANCES = ['verified', 'theoretical', 'hypothetical'] as const;
@@ -20,6 +21,15 @@ export interface KbItem {
   /** Used in answers; unticked items stay stored but are never sent (e.g. an older resume). */
   active: boolean;
   updatedAt: number;
+  /** The profile that owns it (Phase 6); missing on pre-profile records = the default profile. */
+  profileId?: string;
+  /** Other profiles the user explicitly shared it with. Never set automatically. */
+  sharedWith?: string[];
+}
+
+/** Whether a profile may use an item: its own, or explicitly shared with it. */
+export function visibleTo(item: Pick<KbItem, 'profileId' | 'sharedWith'>, profileId: string): boolean {
+  return (item.profileId ?? DEFAULT_PROFILE_ID) === profileId || (item.sharedWith ?? []).includes(profileId);
 }
 
 /** Kinds that describe the candidate; the others are context (a job ad, a term, a doc excerpt). */

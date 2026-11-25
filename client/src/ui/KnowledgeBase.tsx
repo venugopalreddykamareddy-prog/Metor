@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { KB_KINDS, PROVENANCES, hasProvenance, type KbItem, type KbKind, type Provenance } from '../../../shared/kb.ts';
+import { DEFAULT_PROFILE_ID } from '../../../shared/profile.ts';
+import { setShared } from '../profile/profiles.ts';
 import { RETENTION_DAYS, type RetentionDays, type SavedSession } from '../session/history.ts';
 
 const KIND_LABEL: Record<KbKind, string> = {
@@ -21,6 +23,10 @@ const MAX_IMPORT_BYTES = 200_000;
 interface Props {
   /** The answer model selected now, e.g. "Groq GPT-OSS 120B"; null for Simulated. */
   provider: string | null;
+  /** The active profile and the others it can share with (Phase 6). */
+  profileId: string;
+  profiles: { id: string; name: string }[];
+  /** Only items this profile owns or that were shared with it. */
   items: KbItem[];
   error: string | null;
   onSave: (item: KbItem) => void;
@@ -54,7 +60,7 @@ export function KnowledgeBase(p: Props) {
 
   const add = () => {
     if (!title.trim() || !text.trim()) return;
-    p.onSave({ id: crypto.randomUUID(), kind, provenance: hasProvenance(kind) ? provenance : 'verified', title: title.trim(), text: text.trim(), active: true, updatedAt: Date.now() });
+    p.onSave({ id: crypto.randomUUID(), kind, provenance: hasProvenance(kind) ? provenance : 'verified', title: title.trim(), text: text.trim(), active: true, updatedAt: Date.now(), profileId: p.profileId });
     setTitle('');
     setText('');
   };
@@ -118,20 +124,51 @@ export function KnowledgeBase(p: Props) {
 
       {p.items.length > 0 && (
         <ul className="kb-list" data-testid="kb-list">
-          {p.items.map((item) => (
-            <li key={item.id}>
-              <label className="check">
-                <input type="checkbox" checked={item.active} onChange={(e) => p.onSave({ ...item, active: e.target.checked, updatedAt: Date.now() })} />
-                Use in answers
-              </label>{' '}
-              <strong>{item.title}</strong> <span className="badge">{KIND_LABEL[item.kind]}</span>
-              {hasProvenance(item.kind) && <span className={`badge provenance-${item.provenance}`}>{item.provenance}</span>}{' '}
-              <span className="muted">{item.text.length.toLocaleString()} chars</span>{' '}
-              <button type="button" className="link" onClick={() => p.onRemove(item.id)}>
-                Delete
-              </button>
-            </li>
-          ))}
+          {p.items.map((item) => {
+            const owner = item.profileId ?? DEFAULT_PROFILE_ID;
+            const own = owner === p.profileId;
+            const others = p.profiles.filter((o) => o.id !== p.profileId);
+            return (
+              <li key={item.id}>
+                {own && (
+                  <label className="check">
+                    <input type="checkbox" checked={item.active} onChange={(e) => p.onSave({ ...item, active: e.target.checked, updatedAt: Date.now() })} />
+                    Use in answers
+                  </label>
+                )}{' '}
+                <strong>{item.title}</strong> <span className="badge">{KIND_LABEL[item.kind]}</span>
+                {hasProvenance(item.kind) && <span className={`badge provenance-${item.provenance}`}>{item.provenance}</span>}{' '}
+                <span className="muted">{item.text.length.toLocaleString()} chars</span>{' '}
+                {own ? (
+                  <>
+                    {others.length > 0 && (
+                      <span className="share" role="group" aria-label={`Share ${item.title} with`}>
+                        Share with:{' '}
+                        {others.map((o) => (
+                          <label key={o.id} className="check">
+                            <input type="checkbox" checked={(item.sharedWith ?? []).includes(o.id)} onChange={(e) => p.onSave(setShared(item, o.id, e.target.checked))} />
+                            {o.name}
+                          </label>
+                        ))}
+                      </span>
+                    )}{' '}
+                    <button type="button" className="link" onClick={() => p.onRemove(item.id)}>
+                      Delete
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="badge" data-testid="shared-from">
+                      Shared from {p.profiles.find((o) => o.id === owner)?.name ?? 'another profile'}
+                    </span>{' '}
+                    <button type="button" className="link" onClick={() => p.onSave(setShared(item, p.profileId, false))}>
+                      Remove from this profile
+                    </button>
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

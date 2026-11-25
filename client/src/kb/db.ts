@@ -1,6 +1,8 @@
 // Local storage for the knowledge base and opted-in sessions: one IndexedDB database in this
 // browser, nothing on the server (SECURITY_PRIVACY). No wrapper library: the platform API is enough.
 
+import { DEFAULT_PROFILE_ID } from '../../../shared/profile.ts';
+
 export interface Store<T extends { id: string }> {
   all(): Promise<T[]>;
   put(value: T): Promise<void>;
@@ -8,18 +10,25 @@ export interface Store<T extends { id: string }> {
   clear(): Promise<void>;
 }
 
-export type StoreName = 'kb' | 'sessions';
+export type StoreName = 'kb' | 'sessions' | 'profiles' | 'questions';
 const DB_NAME = 'metor';
-const DB_VERSION = 1;
+// v1 (Phase 5): kb, sessions. v2 (Phase 6): profiles and practice questions; existing records are
+// tagged with the default profile so nothing is lost or mixed.
+const DB_VERSION = 2;
+const STORES: StoreName[] = ['kb', 'sessions', 'profiles', 'questions'];
 
 let opening: Promise<IDBDatabase> | null = null;
 
 function open(): Promise<IDBDatabase> {
   opening ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      for (const name of ['kb', 'sessions'] satisfies StoreName[]) {
+    req.onupgradeneeded = (event) => {
+      for (const name of STORES) {
         if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: 'id' });
+      }
+      const tx = req.transaction;
+      if (event.oldVersion >= 1 && event.oldVersion < 2 && tx) {
+        for (const name of ['kb', 'sessions'] as const) tagWithDefaultProfile(tx.objectStore(name));
       }
     };
     req.onsuccess = () => {
@@ -36,6 +45,18 @@ function open(): Promise<IDBDatabase> {
     };
   });
   return opening;
+}
+
+/** Migration to v2: records from before profiles belong to the default profile. */
+function tagWithDefaultProfile(store: IDBObjectStore): void {
+  const cursorReq = store.openCursor();
+  cursorReq.onsuccess = () => {
+    const cursor = cursorReq.result;
+    if (!cursor) return;
+    const value = cursor.value as { profileId?: string };
+    if (!value.profileId) cursor.update({ ...value, profileId: DEFAULT_PROFILE_ID });
+    cursor.continue();
+  };
 }
 
 function run<R>(name: StoreName, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<R>): Promise<R> {
