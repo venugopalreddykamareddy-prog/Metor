@@ -31,7 +31,7 @@ interface CachedAnswer {
  * topics, raw text) → same answer. The client sends turns only when the question needs them.
  */
 export function cacheKey(req: AnswerRequest): string {
-  const parts = [req.engine, req.length, normalizeQuestion(req.question), req.heard ?? '', req.statements, req.turns, req.earlier ?? [], req.isFollowUp, req.kb ?? []];
+  const parts = [req.engine, req.length, normalizeQuestion(req.question), req.heard ?? '', req.statements, req.turns, req.earlier ?? [], req.isFollowUp, req.kb ?? [], req.profile ?? null, req.practice ?? null];
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
@@ -164,7 +164,8 @@ export class AnswerSession {
         for (const e of events) {
           if (e.kind === 'header') {
             header = e.header;
-            if (isClarifyOnly(e.header.assessment)) clip.limiter = new ClarificationLimiter(e.header.clarify);
+            // Practice feedback is never clipped: its header judges the question, not the reply.
+            if (isClarifyOnly(e.header.assessment) && !req.practice) clip.limiter = new ClarificationLimiter(e.header.clarify);
             this.send({ type: 'answer.header', questionId: req.questionId, ...e.header });
           } else {
             emit(clip.limiter ? clip.limiter.push(e.text) : e.text);

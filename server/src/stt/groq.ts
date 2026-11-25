@@ -1,9 +1,9 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { FRAME_MS } from '../../../shared/audio.ts';
 import { levelDb } from '../../../shared/messages.ts';
-import { WHISPER_PROMPT } from '../../../shared/vocabulary.ts';
+import { whisperPrompt } from '../../../shared/vocabulary.ts';
 import type { UsageLedger } from '../limits/usageLedger.ts';
-import type { SttFactory, SttStream, TranscriptSink } from './types.ts';
+import type { SttFactory, SttOptions, SttStream, TranscriptSink } from './types.ts';
 import { encodeWav } from './wav.ts';
 
 export const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -72,7 +72,8 @@ export function parseTranscription(raw: string): string[] | null {
 export function createGroqStt(opts: GroqOptions): SttFactory {
   const doFetch = opts.fetch ?? fetch;
 
-  return (sink: TranscriptSink): SttStream => {
+  return (sink: TranscriptSink, options?: SttOptions): SttStream => {
+    const prompt = whisperPrompt(options?.vocabulary);
     const vad = new VoiceDetector();
     let frames: Int16Array[] = [];
     let preRoll: Int16Array[] = [];
@@ -140,7 +141,7 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
       form.append('language', 'en');
       form.append('temperature', '0');
       form.append('response_format', 'verbose_json');
-      form.append('prompt', WHISPER_PROMPT);
+      form.append('prompt', prompt);
 
       let res: Response | null;
       try {

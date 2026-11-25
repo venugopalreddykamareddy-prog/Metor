@@ -22,4 +22,9 @@ export interface SttStream {
   dispose?(): void;
 }
 
-export type SttFactory = (sink: TranscriptSink) => SttStream;
+export interface SttOptions {
+  /** Profile terms for the Whisper prompt (spelling hints only). */
+  vocabulary?: string[];
+}
+
+export type SttFactory = (sink: TranscriptSink, options?: SttOptions) => SttStream;

@@ -47,7 +47,9 @@ export function createSimulatedAnswer(delayMs = 25): AnswerProvider {
     const h = classify(request);
     const header = `TYPE: ${h.type}\nASSESSMENT: ${h.assessment}\nNOTE: ${h.note ?? '-'}\nCLARIFY: ${h.clarify ?? '-'}\nANSWER:\n`;
     const story = isBehavioral(request.question) ? request.kb?.find((k) => k.provenance === 'verified' && hasProvenance(k.kind)) : undefined;
-    const answer = story
+    const answer = request.practice
+      ? '[Simulated placeholder, not AI feedback.] SCORES: accuracy=3 relevance=4 communication=4 completeness=2\nAccuracy: Placeholder note on accuracy.\nRelevance: Placeholder note on relevance.\nCommunication: Placeholder note on delivery.\nCompleteness: Placeholder note on what was missing.\nBetter: A placeholder for a stronger spoken line.'
+      : story
       ? `[Simulated placeholder, not an AI answer.] From your verified ${story.kind} "${story.title}": ${clip(story.text, 240)} That's the situation, what I did, and the result.`
       : isBehavioral(request.question)
         ? `[Simulated placeholder, not an AI answer.] No verified experience is loaded for this, so here's a hypothetical example. ${BODY.slice(0, SENTENCES[request.length]).join(' ')}`

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ASSESSMENTS, QUESTION_TYPES } from './answerFormat.ts';
 import { FRAME_SAMPLES } from './audio.ts';
 import { MAX_SNIPPETS, kbSnippetSchema } from './kb.ts';
+import { VOCAB_MAX_TERMS, VOCAB_TERM_CHARS, profileContextSchema } from './profile.ts';
 
 export { FRAME_MS, FRAME_SAMPLES, SAMPLE_RATE } from './audio.ts';
 export const AUDIO_HEADER_BYTES = 4;
@@ -46,6 +47,10 @@ const answerRequest = z.strictObject({
   isFollowUp: z.boolean(),
   /** Knowledge-base excerpts picked locally for this question (Phase 5); never the whole KB. */
   kb: z.array(kbSnippetSchema).max(MAX_SNIPPETS).optional(),
+  /** The active interview profile (Phase 6): frames the prompt and keeps caches apart. */
+  profile: profileContextSchema.optional(),
+  /** Practice mode: the candidate's own answer to review instead of suggesting one. */
+  practice: z.strictObject({ answer: z.string().min(1).max(4000) }).optional(),
   /** The user asked this themselves: stop the answer in flight and drop waiting ones (else it queues). */
   replace: z.boolean().optional(),
   /** Regenerate: skip the answer cache and make a new request. */
@@ -55,7 +60,14 @@ const answerRequest = z.strictObject({
 // Client → server
 export const clientMessageSchema = z.discriminatedUnion('type', [
   // Web Speech runs in the browser, so only server-side transcription modes start a session here.
-  z.strictObject({ type: z.literal('session.start'), ...envelope, mode: z.enum(['simulated', 'groq']), source: z.literal('mic') }),
+  z.strictObject({
+    type: z.literal('session.start'),
+    ...envelope,
+    mode: z.enum(['simulated', 'groq']),
+    source: z.literal('mic'),
+    /** The active profile's terms, for the Whisper prompt (Phase 6). */
+    vocabulary: z.array(z.string().min(1).max(VOCAB_TERM_CHARS)).max(VOCAB_MAX_TERMS).optional(),
+  }),
   z.strictObject({ type: z.literal('session.resume'), ...envelope, sessionId, lastFinalSeq: z.number().int().min(0) }),
   z.strictObject({ type: z.literal('session.stop'), ...envelope }),
   answerRequest,

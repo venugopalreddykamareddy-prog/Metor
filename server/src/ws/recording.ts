@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from '@fastify/websocket';
 import { FRAME_MS, levelDb, type ServerMessageBody } from '../../../shared/messages.ts';
-import type { SttFactory, SttStream } from '../stt/types.ts';
+import type { SttFactory, SttOptions, SttStream } from '../stt/types.ts';
 
 const MAX_REPLAY_FINALS = 50;
 const ACK_INTERVAL_MS = 1000;
@@ -37,7 +37,7 @@ export class Recording {
   private limitReported = false;
   private stats = { frames: 0, bytes: 0, sumSquares: 0, samples: 0 };
 
-  constructor(authId: string, socket: WebSocket, createStt: SttFactory, maxAudioMs: number) {
+  constructor(authId: string, socket: WebSocket, createStt: SttFactory, maxAudioMs: number, sttOptions: SttOptions = {}) {
     this.authId = authId;
     this.socket = socket;
     this.maxAudioMs = maxAudioMs;
@@ -61,7 +61,7 @@ export class Recording {
         this.emit(final);
       },
       error: (code, message) => this.emit({ type: 'error', code, message, retryable: true }),
-    });
+    }, sttOptions);
     // Reports every second, including zeros while paused, so the debug line never shows stale numbers.
     this.statsTimer = setInterval(() => this.emitStats(), STATS_INTERVAL_MS);
     this.statsTimer.unref();
@@ -186,8 +186,8 @@ export class Recordings {
     this.maxAudioMs = maxAudioMs;
   }
 
-  start(authId: string, socket: WebSocket, createStt: SttFactory): Recording {
-    const recording = new Recording(authId, socket, createStt, this.maxAudioMs);
+  start(authId: string, socket: WebSocket, createStt: SttFactory, sttOptions: SttOptions = {}): Recording {
+    const recording = new Recording(authId, socket, createStt, this.maxAudioMs, sttOptions);
     this.byId.set(recording.id, recording);
     return recording;
   }

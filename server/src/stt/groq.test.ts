@@ -274,3 +274,21 @@ describe('Groq STT robustness (review fixes)', () => {
     expect(t.ledger.usedInLast(1)).toEqual({ requests: 0, units: 0 }); // reservation rolled back
   });
 });
+
+describe('Groq STT profile vocabulary (Phase 6)', () => {
+  it('uses the profile terms as the Whisper prompt', async () => {
+    const calls: FormData[] = [];
+    const ledger = new UsageLedger(join(dir, 'v.json'), ROOMY);
+    ledgers.push(ledger);
+    const fetchFake = (async (_u: string, init: RequestInit) => (calls.push(init.body as FormData), Response.json({ text: 'ok' }))) as unknown as typeof fetch;
+    const stt = createGroqStt({ apiKey: 'k', model: 'm', ledger, log: silentLog, fetch: fetchFake })(
+      { partial() {}, final() {}, error() {} },
+      { vocabulary: ['Selenium', 'Playwright'] },
+    );
+    for (let i = 0, at = 0; i < 20; i++, at += FRAME_MS) stt.push(tone, at);
+    stt.finalizeNow();
+    await stt.flush?.();
+    expect(calls[0]?.get('prompt')).toBe('Technical interview: Selenium, Playwright.');
+  });
+});
+
