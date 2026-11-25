@@ -133,7 +133,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
       spokenAt: Date.now(),
       firstSeenAt: Date.now(),
     };
-    answers.ask(q, withEngine ?? engine, length, true);
+    answers.ask(q, withEngine ?? engine, length, true, card.context);
   };
 
   // One entry per question; regenerated answers are kept as versions (grouping.ts).

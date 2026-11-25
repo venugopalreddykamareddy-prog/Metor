@@ -73,9 +73,16 @@ export function createGroqAnswer(opts: {
       let buffer = '';
       let reported: TokenUsage | null = null;
       let cutOff = false;
+      // A stream that ends without [DONE] or a finish_reason was cut off in transit.
+      let completed = false;
+      // SSE allows CRLF and CR line endings; a CR at the end of a chunk may pair with the next LF.
+      let pendingCr = '';
       try {
         for await (const bytes of body) {
-          buffer += decoder.decode(bytes, { stream: true });
+          let text = pendingCr + decoder.decode(bytes, { stream: true });
+          pendingCr = text.endsWith('\r') ? '\r' : '';
+          if (pendingCr) text = text.slice(0, -1);
+          buffer += text.replace(/\r\n?/g, '\n');
           let boundary: number;
           while ((boundary = buffer.indexOf('\n\n')) >= 0) {
             const event = buffer.slice(0, boundary);
@@ -83,7 +90,10 @@ export function createGroqAnswer(opts: {
             for (const line of event.split('\n')) {
               if (!line.startsWith('data:')) continue;
               const data = line.slice(5).trim();
-              if (data === '[DONE]') continue;
+              if (data === '[DONE]') {
+                completed = true;
+                continue;
+              }
               let chunk: StreamChunk;
               try {
                 chunk = JSON.parse(data) as StreamChunk;
@@ -100,7 +110,9 @@ export function createGroqAnswer(opts: {
                   reasoningTokens: typeof reasoning === 'number' ? reasoning : null,
                 };
               }
-              if (chunk.choices?.[0]?.finish_reason === 'length') cutOff = true;
+              const finish = chunk.choices?.[0]?.finish_reason;
+              if (finish) completed = true;
+              if (finish === 'length') cutOff = true;
               const text = chunk.choices?.[0]?.delta?.content;
               if (text) yield text;
             }
@@ -108,7 +120,8 @@ export function createGroqAnswer(opts: {
         }
       } finally {
         resolveUsage(reported);
-        resolveTruncated(cutOff);
+        // An incomplete stream counts as cut off: flagged in the UI and never cached.
+        resolveTruncated(cutOff || !completed);
       }
     }
 

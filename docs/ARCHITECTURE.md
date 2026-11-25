@@ -167,7 +167,8 @@ flowchart TD
   L --> A[Answer text]
   H --> UI1[Assessment chip, shown separately]
   A --> UI2[Answer pane]
-  N[New question arrives] -. cancel .-> L
+  N[Typed question] -. replaces .-> L
+  Q[Detected question] -. waits its turn .-> L
 ```
 
 ### 5.2 Question extraction (Phase 4)
@@ -202,7 +203,7 @@ The user can always press **Answer this**.
 
 **Incomplete and superseded questions** (FR-E5, FR-E9). "Can you please help me to" ends on an infinitive "to" with nothing after it, so it waits. When the same opening comes back completed ("…help me to understand BGP communities"), the completed text replaces the pending item, and only that gets answered. An incomplete fragment that never completes is shown greyed out in the list and isn't answered.
 
-**Rapid topic changes.** Each question is extracted on its own. A new topic after a short pause starts a new item, even mid-answer: the in-flight answer is cancelled (§5.1) and context from the old topic isn't carried into the new one unless it's a follow-up.
+**Rapid topic changes.** Each question is extracted on its own. A new topic after a short pause starts a new item, even mid-answer. Detected questions are answered one at a time, in order (at most 5 waiting); a question the user types replaces the answer in flight and drops waiting ones, and Stop answer cancels one. Context from the old topic isn't carried into the new one unless it's a follow-up.
 
 **No duplicate answers** (FR-E6).
 - Each extracted question has an id from its source sentence keys.
@@ -481,7 +482,7 @@ The flow diagram above applies once persistence is enabled. By default, session 
 | Transcript latency | Small audio frames (~100 ms); interim results where the source supports them (Web Speech); for Groq, short silence-bounded segments and immediate upload |
 | First token | Trigger on silence debounce, not on punctuation alone; small prompt; stream immediately; keep the provider connection warm where supported |
 | Duplicates | Client de-dup + server idempotency on `questionId` |
-| Cancellation | Abort upstream LLM request (`AbortController`) when superseded |
+| Cancellation | Abort upstream LLM request (`AbortController`) on Stop answer, a typed replacement or logout; Groq transcription requests are aborted on logout or session end, and Stop waits up to 25 s for the last segment |
 | Memory | Virtualized transcript list beyond ~500 segments; drop partials once final arrives |
 | Reconnect | Resume protocol in §6.3 (session identity, sequence IDs, bounded buffers) |
 

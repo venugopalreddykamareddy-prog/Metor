@@ -24,6 +24,8 @@ const DAY_MINUTES = 24 * 60;
 export class UsageLedger {
   private buckets = new Map<number, Usage>();
   private writing: Promise<void> = Promise.resolve();
+  /** The most recent write, rejecting if it failed (reserveDurable waits on it). */
+  private lastWrite: Promise<void> = Promise.resolve();
   private readonly path: string;
   private readonly limits: QuotaLimits;
   private readonly now: () => number;
@@ -56,6 +58,27 @@ export class UsageLedger {
    */
   reserve(usage: Usage): boolean {
     return this.reserveTicket(usage) !== null;
+  }
+
+  /**
+   * Reserves, then waits until the reservation is on disk before the caller may call the provider.
+   * If the write fails the reservation is rolled back and the call must not happen (fail closed):
+   * a restart would otherwise forget usage the provider counted.
+   */
+  async reserveDurable(usage: Usage): Promise<{ ok: true; ticket: number } | { ok: false; reason: 'quota' | 'storage' }> {
+    const ticket = this.reserveTicket(usage);
+    if (ticket === null) return { ok: false, reason: 'quota' };
+    try {
+      await this.lastWrite;
+    } catch {
+      const bucket = this.buckets.get(ticket);
+      if (bucket) {
+        bucket.requests = Math.max(0, bucket.requests - usage.requests);
+        bucket.units = Math.max(0, bucket.units - usage.units);
+      }
+      return { ok: false, reason: 'storage' };
+    }
+    return { ok: true, ticket };
   }
 
   /** Like reserve(), but returns the bucket it was charged to so settle() can correct it later. */
@@ -120,11 +143,14 @@ export class UsageLedger {
   /** Writes are queued so they never interleave; temp file + rename keeps the file whole. */
   private save(): void {
     const json = JSON.stringify(Object.fromEntries(this.buckets));
-    this.writing = this.writing.then(async () => {
+    const write = this.writing.then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
       const tmp = `${this.path}.tmp`;
       await writeFile(tmp, json);
       await rename(tmp, this.path);
-    }).catch(this.onWriteError);
+    });
+    this.lastWrite = write;
+    write.catch(() => undefined); // observed here; reserveDurable() reads the result
+    this.writing = write.catch(this.onWriteError);
   }
 }

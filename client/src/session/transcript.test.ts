@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTranscript, clearTranscript, dropPartial, emptyTranscript, transcriptText } from './transcript.ts';
+import { acceptsTranscript, applyTranscript, clearTranscript, dropPartial, emptyTranscript, transcriptText } from './transcript.ts';
 
 const env = { id: 'x', ts: 1 };
 const partial = (text: string) => ({ type: 'transcript.partial' as const, ...env, segmentId: 's', text });
@@ -53,3 +53,14 @@ describe('applyTranscript', () => {
     expect(applyTranscript(cleared, final(2, 'b')).lines).toHaveLength(1);
   });
 });
+
+describe('acceptsTranscript (recording isolation)', () => {
+  it("shows the current recording's text and the stopped one's late final, until a new recording starts", () => {
+    expect(acceptsTranscript('new', 'new', null)).toBe(true);
+    expect(acceptsTranscript('old', null, 'old')).toBe(true); // idle after Stop: last segment still welcome
+    expect(acceptsTranscript('old', 'new', null)).toBe(false); // a new recording started: never mixed in
+    expect(acceptsTranscript('old', null, null)).toBe(false); // e.g. Browser speech now active
+    expect(acceptsTranscript(undefined, 'new', null)).toBe(true);
+  });
+});
+

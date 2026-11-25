@@ -20,6 +20,7 @@ const silence = new Int16Array(FRAME_SAMPLES);
 interface Call {
   url: string;
   form: FormData;
+  signal?: AbortSignal | null;
 }
 
 let dir: string;
@@ -33,18 +34,18 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function setup(opts: { respond?: (call: Call) => Response | Promise<Response>; limits?: QuotaLimits } = {}) {
+function setup(opts: { respond?: (call: Call) => Response | Promise<Response>; limits?: QuotaLimits; ledgerPath?: string } = {}) {
   const calls: Call[] = [];
   const events: { type: string; text?: string; latencyMs?: number; code?: string }[] = [];
   const respond =
     opts.respond ??
     (() => Response.json({ text: 'x', segments: [{ text: ' run cube cuddle get pods', no_speech_prob: 0.01 }] }));
   const fakeFetch = (async (url: string, init: RequestInit) => {
-    const call = { url, form: init.body as FormData };
+    const call = { url, form: init.body as FormData, signal: init.signal };
     calls.push(call);
     return respond(call);
   }) as unknown as typeof fetch;
-  const ledger = new UsageLedger(join(dir, 'ledger.json'), opts.limits ?? ROOMY);
+  const ledger = new UsageLedger(opts.ledgerPath ?? join(dir, 'ledger.json'), opts.limits ?? ROOMY);
   ledgers.push(ledger);
   const stt = createGroqStt({ apiKey: 'test-key', model: 'whisper-large-v3-turbo', ledger, log: silentLog, fetch: fakeFetch })({
     partial: (text) => events.push({ type: 'partial', text }),
@@ -56,7 +57,11 @@ function setup(opts: { respond?: (call: Call) => Response | Promise<Response>; l
     for (let i = 0; i < ms / FRAME_MS; i++, atMs += FRAME_MS) stt.push(frame, atMs);
   };
   const finals = () => events.filter((e) => e.type === 'final').map((e) => e.text);
-  const settle = () => new Promise((r) => setTimeout(r, 20));
+  // Waits for queued uploads (each now waits for its ledger write), bounded for streams that never finish.
+  const settle = async () => {
+    await Promise.race([stt.flush?.(), new Promise((r) => setTimeout(r, 500))]);
+    await new Promise((r) => setTimeout(r, 5));
+  };
   return { stt, calls, events, feed, finals, settle, ledger };
 }
 
@@ -205,5 +210,67 @@ describe('Groq STT', () => {
     t.feed(silence, 1500);
     await new Promise((r) => setTimeout(r, 120));
     expect(t.finals()).toEqual(['first', 'second']);
+  });
+});
+
+describe('Groq STT robustness (review fixes)', () => {
+  it('keeps transcribing after a malformed response', async () => {
+    let n = 0;
+    const t = setup({
+      respond: () => (++n === 1 ? new Response('<html>bad gateway</html>', { status: 200 }) : Response.json({ text: 'second segment' })),
+    });
+    t.feed(tone, 2000);
+    t.stt.finalizeNow();
+    await t.settle();
+    expect(t.events.some((e) => e.type === 'error' && e.code === 'provider_unavailable')).toBe(true);
+    t.feed(tone, 2000);
+    t.stt.finalizeNow();
+    await t.settle();
+    expect(t.finals()).toEqual(['second segment']);
+  });
+
+  it('treats a JSON body of the wrong shape as malformed', async () => {
+    const t = setup({ respond: () => Response.json({ segments: 'nope' }) });
+    t.feed(tone, 2000);
+    t.stt.finalizeNow();
+    await t.settle();
+    expect(t.finals()).toEqual([]);
+    expect(t.events.at(-1)).toMatchObject({ type: 'error', code: 'provider_unavailable' });
+  });
+
+  it('flush() resolves once queued segments are transcribed', async () => {
+    const t = setup();
+    t.feed(tone, 2000);
+    t.stt.finalizeNow();
+    await t.stt.flush?.();
+    expect(t.finals()).toHaveLength(1);
+  });
+
+  it('dispose() aborts the request in flight and skips queued segments: no Groq call after logout', async () => {
+    const t = setup({ respond: () => new Promise<Response>(() => undefined) }); // never answers on its own
+    t.feed(tone, 2000);
+    t.stt.finalizeNow(); // segment 1: in flight
+    t.feed(tone, 2000);
+    t.stt.finalizeNow(); // segment 2: queued
+    await t.settle();
+    expect(t.calls).toHaveLength(1);
+    expect(t.calls[0]?.signal?.aborted).toBe(false);
+    t.stt.dispose?.();
+    await t.settle();
+    expect(t.calls[0]?.signal?.aborted).toBe(true);
+    expect(t.calls).toHaveLength(1); // the queued segment never reached Groq
+    expect(t.finals()).toEqual([]);
+  });
+
+  it('fails closed when the quota ledger cannot be written: no Groq call', async () => {
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'blocker'), 'x'); // a path under a regular file can't be created
+    const t = setup({ ledgerPath: join(dir, 'blocker', 'ledger.json') });
+    t.feed(tone, 2000);
+    t.stt.finalizeNow();
+    await t.settle();
+    expect(t.calls).toHaveLength(0);
+    expect(t.events.at(-1)).toMatchObject({ type: 'error', code: 'provider_unavailable' });
+    expect(t.ledger.usedInLast(1)).toEqual({ requests: 0, units: 0 }); // reservation rolled back
   });
 });

@@ -9,6 +9,7 @@ import type { AnswerStats } from './stats.ts';
 import { ProviderError, type AnswerProvider } from './types.ts';
 
 const REMEMBERED_QUESTION_IDS = 200;
+const MAX_WAITING = 5;
 /**
  * Engines allowed to receive resume and KB excerpts. A new engine must decide here; the Gemini free
  * tier never may (hard rule 11). Groq needs Zero Data Retention turned on by the owner (SECURITY_PRIVACY).
@@ -46,8 +47,7 @@ export interface AnswerDeps {
 }
 
 /**
- * Answers for one WebSocket connection. One answer streams at a time: a new question cancels the
- * one in flight. Each questionId is answered once; regenerating uses a new id (ARCHITECTURE §6.3).
+ * Answers for one WebSocket connection. One answer streams at a time; others wait their turn. Each questionId is answered once; regenerating uses a new id (ARCHITECTURE §6.3).
  */
 export class AnswerSession {
   private readonly deps: AnswerDeps;
@@ -55,6 +55,10 @@ export class AnswerSession {
   private readonly seen: string[] = [];
   private inFlight: { questionId: string; controller: AbortController } | null = null;
   private answered = 0;
+  /** Questions queued behind the one in flight, in order. */
+  private readonly waiting = new Set<string>();
+  private chain: Promise<void> = Promise.resolve();
+  private closed = false;
   private readonly cache = new Map<string, CachedAnswer>();
 
   constructor(deps: AnswerDeps, send: (body: ServerMessageBody) => void) {
@@ -62,13 +66,35 @@ export class AnswerSession {
     this.send = send;
   }
 
-  async handle(req: AnswerRequest): Promise<void> {
-    const fail = (code: Extract<ServerMessageBody, { type: 'answer.failed' }>['code'], message: string) =>
-      this.send({ type: 'answer.failed', questionId: req.questionId, code, message });
-
-    if (this.seen.includes(req.questionId)) return fail('duplicate', 'This question was already answered.');
+  /**
+   * Questions are answered one at a time, in order: several detected together each get an answer.
+   * Only `replace` (the user typed a new question) or answer.cancel stops one early.
+   */
+  handle(req: AnswerRequest): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.seen.includes(req.questionId)) {
+      this.send({ type: 'answer.failed', questionId: req.questionId, code: 'duplicate', message: 'This question was already answered.' });
+      return Promise.resolve();
+    }
     this.seen.push(req.questionId);
     if (this.seen.length > REMEMBERED_QUESTION_IDS) this.seen.shift();
+    if (req.replace) {
+      for (const id of [...this.waiting]) this.cancel(id, 'Replaced by a newer question.');
+      if (this.inFlight) this.cancel(this.inFlight.questionId, 'Replaced by a newer question.');
+    }
+    if (this.waiting.size >= MAX_WAITING) {
+      this.send({ type: 'answer.failed', questionId: req.questionId, code: 'limit_reached', message: 'Too many questions waiting for an answer.' });
+      return Promise.resolve();
+    }
+    this.waiting.add(req.questionId);
+    const run = this.chain.then(() => (this.waiting.delete(req.questionId) ? this.answer(req) : undefined));
+    this.chain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async answer(req: AnswerRequest): Promise<void> {
+    const fail = (code: Extract<ServerMessageBody, { type: 'answer.failed' }>['code'], message: string) =>
+      this.send({ type: 'answer.failed', questionId: req.questionId, code, message });
 
     // KB excerpts are personal data: only engines cleared for it may receive them (FR-K4).
     if (req.kb?.length && !RECEIVES_PERSONAL_DATA[req.engine]) {
@@ -76,8 +102,6 @@ export class AnswerSession {
     }
     const provider = this.deps.providers[req.engine];
     if (!provider) return fail('provider_unavailable', `${req.engine} isn't configured on the server.`);
-
-    if (this.inFlight) this.cancel(this.inFlight.questionId, 'Replaced by a newer question.');
 
     const key = cacheKey(req);
     const hit = this.cache.get(key);
@@ -96,21 +120,35 @@ export class AnswerSession {
     const reserved = estimateTokens(messages) + maxTokens;
     const usesQuota = req.engine !== 'simulated';
     let ticket: number | null = null;
-    if (usesQuota) {
-      ticket = this.deps.ledger?.reserveTicket({ requests: 1, units: reserved }) ?? null;
-      if (ticket === null) {
-        return fail('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Try again shortly or use Simulated.");
-      }
-    }
-
-    this.answered += 1;
+    // Registered before any wait, so Stop answer, a typed replacement or logout during the quota
+    // write still prevents the provider request.
     const controller = new AbortController();
     this.inFlight = { questionId: req.questionId, controller };
-    const started = Date.now();
+    let started = Date.now();
     let firstTokenMs: number | null = null;
 
     try {
-      const stream = await provider({ request: req, messages, maxTokens, signal: controller.signal });
+      if (usesQuota) {
+        // Durable before the request: a failed ledger write means no provider call (fail closed).
+        const r = this.deps.ledger ? await this.deps.ledger.reserveDurable({ requests: 1, units: reserved }) : ({ ok: false, reason: 'quota' } as const);
+        if (r.ok) ticket = r.ticket;
+        if (controller.signal.aborted || this.closed) {
+          // Cancelled while reserving: no request was made, so no tokens were used.
+          if (r.ok) this.deps.ledger?.settle(r.ticket, reserved, 0);
+          return;
+        }
+        if (!r.ok && r.reason === 'storage') {
+          return fail('provider_unavailable', "Metor couldn't record quota usage, so it didn't call Groq. Check the server's data folder.");
+        }
+        if (!r.ok) return fail('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Try again shortly or use Simulated.");
+      }
+      this.answered += 1;
+      started = Date.now(); // first-word timing starts at the provider request, as before
+
+      // Every wait is raced with cancellation, so a provider that ignores the abort can't hold the queue.
+      const cancelled = new Promise<null>((r) => controller.signal.addEventListener('abort', () => r(null), { once: true }));
+      const stream = await Promise.race([provider({ request: req, messages, maxTokens, signal: controller.signal }), cancelled]);
+      if (!stream) return;
       const parser = new AnswerStreamParser();
       let header: AnswerHeader | null = null;
       let text = '';
@@ -133,11 +171,16 @@ export class AnswerSession {
           }
         }
       };
-      for await (const chunk of stream.chunks) {
-        if (controller.signal.aborted) break;
-        forward(parser.push(chunk));
+      const reader = stream.chunks[Symbol.asyncIterator]();
+      for (;;) {
+        const next = await Promise.race([reader.next(), cancelled]);
+        if (!next || next.done || controller.signal.aborted) break;
+        forward(parser.push(next.value));
       }
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        void reader.return?.(undefined).catch(() => undefined);
+        return;
+      }
       forward(parser.end());
       // The stream is still read to the end, so the ledger settles on the reported usage.
       const clipped = clip.limiter?.finished ?? false;
@@ -181,6 +224,10 @@ export class AnswerSession {
   }
 
   cancel(questionId: string, message = 'Cancelled.'): void {
+    if (this.waiting.delete(questionId)) {
+      this.send({ type: 'answer.failed', questionId, code: 'cancelled', message });
+      return;
+    }
     if (this.inFlight?.questionId !== questionId) return;
     this.inFlight.controller.abort();
     this.inFlight = null;
@@ -189,6 +236,8 @@ export class AnswerSession {
 
   /** Connection closed or login ended. */
   close(): void {
+    this.closed = true;
+    this.waiting.clear();
     this.inFlight?.controller.abort();
     this.inFlight = null;
   }

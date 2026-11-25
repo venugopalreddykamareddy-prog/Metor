@@ -232,7 +232,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - [x] Extraction fixture (`eval/question-extraction.json`): 31/31 word for word; holdout 13/15 blind, then 15/15; no answer for filler-only and incomplete cases (unit tests)
 - [x] Requests without `?` ("talk about…", "explain…", "describe…", "walk me through…", "design…") are extracted as questions (unit tests)
 - [x] Incomplete phrases are never answered; the answer waits; a completed question replaces its earlier incomplete version (tracker tests; trailing fillers no longer hide a dangling end)
-- [x] Several questions in one stretch are extracted separately; a rapid topic change starts a new item and cancels the in-flight answer, keeping its partial text (unit, integration and e2e tests)
+- [x] Several questions in one stretch are extracted separately and answered in order; a typed question replaces the in-flight answer, keeping its partial text (unit, integration and e2e tests; queueing changed after the 2026-11-25 code review)
 - [x] Duplicate transcript events are dropped; a genuine repeat re-shows the earlier answer without a new request, moved to the end and marked "asked again" (tracker and grouping tests)
 - [x] Ambiguous acronyms: context hints in the prompt (`shared/acronyms.ts`); on the Groq sample, ambi-11 ("AAA on the firewall") stated the assumed meaning and answered, and ambi-12 ("experience with AA") asked which meaning; the label for ambi-11 was `clarification_needed` where `none` was expected
 - [x] Original meaning is preserved: extracted questions are word-for-word spans of the clean transcript (unit tests)

@@ -21,8 +21,8 @@ describe('parseHeader', () => {
   it('falls back to safe defaults for unknown or missing values', () => {
     expect(parseHeader('TYPE: weird\nASSESSMENT: trick_question')).toEqual({
       questionType: 'unknown',
-      assessment: 'none',
-      note: null,
+      assessment: 'unverified',
+      note: "The answer check was missing or unreadable, so terms and premises weren't checked.",
       clarify: null,
     });
   });
@@ -48,7 +48,7 @@ describe('AnswerStreamParser', () => {
   it('treats output without a header as a plain answer', () => {
     const long = 'Here is an answer without any header. '.repeat(20);
     const events = run([long]);
-    expect(events[0]).toEqual({ kind: 'header', header: { questionType: 'unknown', assessment: 'none', note: null, clarify: null } });
+    expect(events[0]).toMatchObject({ kind: 'header', header: { questionType: 'unknown', assessment: 'unverified', clarify: null } });
     expect(textOf(events)).toBe(long);
     expect(textOf(run(['Short answer, no header.']))).toBe('Short answer, no header.');
   });
@@ -128,3 +128,18 @@ describe('assessmentDetails', () => {
     expect(assessmentDetails('Incorrect premise', h('incorrect_premise', 'Wrong protocol class.', 'Did you mean UDP?'), 'TCP is connection-oriented.').clarify).toBe('Did you mean UDP?');
   });
 });
+
+describe('missing or invalid assessment (review finding 7)', () => {
+  it('is marked unverified with a note, never none', () => {
+    expect(parseHeader('TYPE: technical\nNOTE: -')).toMatchObject({ assessment: 'unverified', note: expect.stringContaining("weren't checked") });
+    expect(parseHeader('ASSESSMENT: totally_fine')).toMatchObject({ assessment: 'unverified' });
+    expect(parseHeader('ASSESSMENT: unverified')).toMatchObject({ assessment: 'unverified' }); // the model can't set it either
+    expect(parseHeader('ASSESSMENT: none')).toMatchObject({ assessment: 'none', note: null });
+  });
+
+  it('an answer with no header at all is unverified', () => {
+    const events = run(['Just some answer text without any header.']);
+    expect(events[0]).toMatchObject({ kind: 'header', header: { assessment: 'unverified' } });
+  });
+});
+

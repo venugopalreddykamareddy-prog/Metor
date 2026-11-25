@@ -57,3 +57,12 @@ export function clearTranscript(state: Transcript): Transcript {
 export function transcriptText(state: Transcript): string {
   return state.lines.flatMap((l) => (l.kind === 'final' ? [l.text] : [])).join(' ');
 }
+
+/**
+ * Whether a server transcript message belongs on screen: the current recording's, or the one just
+ * stopped while its last segment finishes. Once another recording starts, late text from the old
+ * one is dropped so the two never mix. Messages without a sessionId (older servers) are accepted.
+ */
+export function acceptsTranscript(msgSessionId: string | undefined, current: string | null, finishing: string | null): boolean {
+  return msgSessionId === undefined || msgSessionId === current || msgSessionId === finishing;
+}

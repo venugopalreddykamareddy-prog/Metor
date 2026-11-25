@@ -16,6 +16,10 @@ export interface SttStream {
   finalizeNow(): void;
   /** Drop the current partial without finalizing it (connection lost). */
   discardPartial(): void;
+  /** Resolves when queued and in-flight transcription has finished (Stop waits for it, bounded). */
+  flush?(): Promise<void>;
+  /** Logout, expiry or end of session: drop queued work and abort requests in flight. */
+  dispose?(): void;
 }
 
 export type SttFactory = (sink: TranscriptSink) => SttStream;

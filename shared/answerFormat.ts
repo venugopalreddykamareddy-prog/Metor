@@ -18,6 +18,9 @@ export const ASSESSMENTS = [
   'insufficient_information',
   'unverified_experience',
   'off_topic',
+  // Set locally, never by the model: the header was missing or its ASSESSMENT unreadable, so the
+  // answer's premise and terms weren't checked. Shown as a warning, never as "none".
+  'unverified',
 ] as const;
 
 export type QuestionType = (typeof QUESTION_TYPES)[number];
@@ -49,11 +52,12 @@ function splitInlineFields(text: string): string {
 export function parseHeader(raw: string): AnswerHeader {
   const header = splitInlineFields(raw);
   const type = field(header, 'TYPE')?.toLowerCase();
-  const assessment = field(header, 'ASSESSMENT')?.toLowerCase();
+  const label = field(header, 'ASSESSMENT')?.toLowerCase();
+  const assessment = ASSESSMENTS.find((a) => a === label && a !== 'unverified') ?? 'unverified';
   return {
     questionType: QUESTION_TYPES.find((t) => t === type) ?? 'unknown',
-    assessment: ASSESSMENTS.find((a) => a === assessment) ?? 'none',
-    note: field(header, 'NOTE'),
+    assessment,
+    note: field(header, 'NOTE') ?? (assessment === 'unverified' ? "The answer check was missing or unreadable, so terms and premises weren't checked." : null),
     clarify: field(header, 'CLARIFY'),
   };
 }

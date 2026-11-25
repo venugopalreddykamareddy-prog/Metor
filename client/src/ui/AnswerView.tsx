@@ -19,6 +19,7 @@ const ASSESSMENT_LABEL: Record<Assessment, string | null> = {
   insufficient_information: 'Not enough information',
   unverified_experience: 'Unverified experience',
   off_topic: 'Off-topic',
+  unverified: 'Unverified answer',
 };
 const MODEL_LABEL: Record<Exclude<AnswerCard['engine'], 'simulated'>, string> = {
   'groq-120b': 'GPT-OSS 120B on Groq',
