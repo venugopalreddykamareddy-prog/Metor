@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { AnswerHeader } from '../../../shared/answerFormat.ts';
+import type { KbSnippet } from '../../../shared/kb.ts';
 import type { AnswerEngine, AnswerLength, ClientMessageBody } from '../../../shared/messages.ts';
 import type { DetectedQuestion } from '../questions/tracker.ts';
 import type { AnswerMessage } from '../session/useRecorder.ts';
@@ -28,6 +29,8 @@ export interface AnswerCard {
   usage: { promptTokens: number; completionTokens: number; reasoningTokens: number | null } | null;
   truncated: boolean;
   cached: boolean;
+  /** Knowledge-base excerpts sent with the question (shown with the answer). */
+  kb: KbSnippet[];
 }
 
 const CONTEXT_TURNS = 3;
@@ -36,7 +39,10 @@ const CONTEXT_ANSWER_CHARS = 600;
 // Matches the server's default MAX_ANSWERS_PER_SESSION, so a session's answers are all kept.
 const MAX_CARDS = 100;
 
-export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
+/** pickKb: the KB excerpts relevant to a question, picked locally (shared/kb.ts retrieve). */
+export function useAnswers(send: (msg: ClientMessageBody) => boolean, pickKb?: (q: DetectedQuestion) => KbSnippet[]) {
+  const pickRef = useRef(pickKb);
+  pickRef.current = pickKb;
   const [cards, setCards] = useState<AnswerCard[]>([]);
   const cardsRef = useRef(cards);
   cardsRef.current = cards;
@@ -51,6 +57,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
       const withContext = needsContext(q.text, q.kind === 'follow_up');
       const turns = withContext ? contextTurns(cardsRef.current, CONTEXT_TURNS, CONTEXT_ANSWER_CHARS) : [];
       const earlier = withContext ? earlierTopics(cardsRef.current, CONTEXT_TURNS) : [];
+      const kb = pickRef.current?.(q) ?? [];
       const sent = send({
         type: 'answer.request',
         questionId,
@@ -61,6 +68,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         statements: q.statements.slice(-5).map((s) => s.slice(0, 500)),
         turns,
         ...(earlier.length ? { earlier } : {}),
+        ...(kb.length ? { kb } : {}),
         isFollowUp: q.kind === 'follow_up',
         ...(fresh ? { fresh: true } : {}),
       });
@@ -86,6 +94,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         usage: null,
         truncated: false,
         cached: false,
+        kb,
       };
       setCards((cs) => [...cs.slice(-(MAX_CARDS - 1)), card]);
       return true;

@@ -375,3 +375,15 @@ button.link {
 .cursor { animation: pulse 1s steps(2) infinite; }
 .answer.off-topic { padding: 0.3rem 0.75rem; font-size: 0.85rem; border-style: dotted; background: none; }
 .experience-warning { border-left-color: var(--bad); }
+
+/* Knowledge base and session history (Phase 5) */
+.kb-form { display: grid; gap: 0.5rem; max-width: 48rem; margin: 0.5rem 0; }
+.kb-form label { display: flex; gap: 0.5rem; align-items: center; }
+.kb-list { list-style: none; padding: 0; margin: 0.5rem 0; }
+.kb-list li { padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
+.provenance-verified { color: var(--ok); }
+.provenance-theoretical { color: var(--warn); }
+.provenance-hypothetical { color: var(--muted); }
+.kb .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+button.danger { color: var(--bad); }
+.kb-used { font-size: 0.85em; margin: 0.25rem 0; }

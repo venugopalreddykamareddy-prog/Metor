@@ -9,6 +9,11 @@ import { buildCleanTranscript, cleanTranscriptText } from './session/cleanTransc
 import { useCorrections } from './session/corrections.ts';
 import { transcriptText } from './session/transcript.ts';
 import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
+import { retrieve } from '../../shared/kb.ts';
+import { deleteDatabase, idbStore } from './kb/db.ts';
+import { useKb } from './kb/useKb.ts';
+import { RETENTION_DAYS, exportJson, purgeExpired, saveSession, type SavedSession } from './session/history.ts';
+import { KnowledgeBase } from './ui/KnowledgeBase.tsx';
 import { load, save, useAnswerDisplay, useSetting } from './settings.ts';
 import { leftToday, preferredMode, whisperQuotaLeft } from './session/transcriptionMode.ts';
 import { speechRecognitionCtor } from './stt/webspeech.ts';
@@ -39,6 +44,8 @@ export function App() {
   return <Recorder me={me} onLoggedOut={() => setMe(null)} />;
 }
 
+const sessionStore = idbStore<SavedSession>('sessions');
+
 const MODE_LABEL: Record<TranscriptionMode, string> = {
   simulated: 'Simulated',
   webspeech: 'Browser speech',
@@ -58,7 +65,9 @@ function median(values: number[]): number {
 function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const answerHandler = useRef<(msg: AnswerMessage) => void>(() => {});
   const recorder = useRecorder(onLoggedOut, (msg) => answerHandler.current(msg));
-  const answers = useAnswers(recorder.send);
+  const kb = useKb();
+  // Only the excerpts that match this question and what was said just before it (FR-K2).
+  const answers = useAnswers(recorder.send, (q) => retrieve(kb.items, [q.text, ...q.statements].join(' ')));
   answerHandler.current = answers.handleMessage;
 
   const available: TranscriptionMode[] = [
@@ -75,6 +84,14 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const [focus, setFocus] = useState(false);
   const { display, setFontSize, setLineSpacing } = useAnswerDisplay();
   const [askingConsent, setAskingConsent] = useState(false);
+  // Opt-in session history: off by default; expired sessions are purged when the app opens.
+  const [persist, setPersist] = useSetting<'on' | 'off'>('persistSessions', ['on', 'off'], 'off');
+  const [retentionDays, setRetentionDays] = useSetting('retentionDays', RETENTION_DAYS, '30');
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
+  const recordingStartedAt = useRef(0);
+  useEffect(() => {
+    void purgeExpired(sessionStore, Date.now()).then(setSessions, () => undefined);
+  }, []);
   const [usage, setUsage] = useState<Usage | null>(null);
   // A mode the user picked is kept; otherwise Groq Whisper within its free quota, then Browser speech.
   const [picked, setPicked] = useState<TranscriptionMode | null>(() => {
@@ -139,6 +156,39 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const canStart = phase === 'idle' && (mode === 'webspeech' || connection === 'connected');
 
 
+  /** Stop, then save the recording if the user opted in (nothing is written otherwise). */
+  const stopRecording = () => {
+    recorder.stop();
+    const startedAt = recordingStartedAt.current;
+    const done = answers.cards.filter((c) => c.sentAt >= startedAt && c.status === 'done');
+    void saveSession(
+      sessionStore,
+      { persist: persist === 'on', retentionDays },
+      {
+        id: crypto.randomUUID(),
+        startedAt,
+        mode: MODE_LABEL[activeMode],
+        transcript: cleanTranscriptText(clean),
+        answers: done.map((c) => ({ question: c.question, answer: c.text, engine: c.engine })),
+      },
+      Date.now(),
+    ).then((saved) => saved && void purgeExpired(sessionStore, Date.now()).then(setSessions));
+  };
+  const deleteSession = (id: string) => void sessionStore.delete(id).then(() => setSessions((all) => all.filter((x) => x.id !== id)));
+  const exportAll = () => {
+    const url = URL.createObjectURL(new Blob([exportJson({ kb: kb.items, sessions }, Date.now())], { type: 'application/json' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'metor-export.json' });
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const deleteEverything = () => {
+    if (!window.confirm('Delete the knowledge base, saved sessions and all Metor settings in this browser? This cannot be undone.')) return;
+    void deleteDatabase().finally(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('metor.')) localStorage.removeItem(key);
+      window.location.reload();
+    });
+  };
+
   const onLogout = async () => {
     recorder.stop();
     try {
@@ -185,7 +235,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           </button>
         )}
         {micOpen && (
-          <button type="button" onClick={recorder.stop}>
+          <button type="button" onClick={stopRecording}>
             Stop
           </button>
         )}
@@ -335,6 +385,21 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           }
         />
 
+        <KnowledgeBase
+          items={kb.items}
+          error={kb.error}
+          onSave={kb.save}
+          onRemove={kb.remove}
+          persist={persist === 'on'}
+          retentionDays={retentionDays}
+          onPersist={(on) => setPersist(on ? 'on' : 'off')}
+          onRetention={setRetentionDays}
+          sessions={sessions}
+          onDeleteSession={deleteSession}
+          onExport={exportAll}
+          onDeleteEverything={deleteEverything}
+        />
+
         <AccuracyCheck
           rawText={transcriptText(recorder.transcript)}
           cleanText={cleanTranscriptText(clean)}
@@ -349,6 +414,7 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
           onCancel={() => setAskingConsent(false)}
           onConfirm={() => {
             setAskingConsent(false);
+            recordingStartedAt.current = Date.now();
             setOverrides({});
             questions.reset(); // sentence keys restart with each recording
             void recorder.start(mode);

@@ -15,6 +15,7 @@ function card(questionId: string, sourceId: string, sentAt: number, extra: Parti
     error: null,
     model: 'simulated',
     origin: 'speech',
+    kb: [],
     spokenAt: sentAt,
     sentAt,
     firstTextAt: null,

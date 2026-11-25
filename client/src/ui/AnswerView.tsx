@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { assessmentDetails, type Assessment } from '../../../shared/answerFormat.ts';
-import { findExperienceClaims } from '../../../shared/experienceClaims.ts';
+import { findExperienceClaims, unsupportedClaims } from '../../../shared/experienceClaims.ts';
+import { hasProvenance, snippetLabel } from '../../../shared/kb.ts';
 import { checkAvailabilityNumbers } from '../../../shared/numericChecks.ts';
 import { unverifiedSpecifics } from '../../../shared/unverifiedSpecifics.ts';
 import type { AnswerGroup } from '../answers/grouping.ts';
@@ -95,7 +96,9 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
   const timing = firstWordTiming(card);
   const streaming = card.status === 'streaming';
   // A local safety net for hard rule 3: the prompt forbids invented experience, this catches slips.
-  const claims = findExperienceClaims(card.text);
+  // With verified KB excerpts sent, only claims they don't back are flagged (FR-K4).
+  const verified = card.kb.filter((k) => k.provenance === 'verified' && hasProvenance(k.kind)).map((k) => `${k.title} ${k.text}`);
+  const claims = unsupportedClaims(findExperienceClaims(card.text), verified);
   // Specific settings or commands named next to an unfamiliar term may be invented.
   const numberIssues = streaming ? [] : checkAvailabilityNumbers(card.text);
   const specifics = card.header?.assessment === 'unrecognized_term' && !streaming ? unverifiedSpecifics(card.text) : [];
@@ -146,7 +149,8 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
       )}
       {claims.length > 0 && (
         <div className="assessment experience-warning" role="note" data-testid="experience-warning">
-          <strong>Claims experience you haven't verified</strong> · No resume or verified experience is loaded, so don't say this as fact: “
+          <strong>Claims experience you haven't verified</strong> ·{' '}
+          {verified.length ? "Your verified notes don't back this" : 'No resume or verified experience is loaded'}, so don't say this as fact: “
           {claims[0]}”
         </div>
       )}
@@ -159,6 +163,11 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
         <div className="assessment experience-warning" role="note" data-testid="unverified-specifics">
           <strong>Unverified specifics</strong> · The term wasn't recognized, so these may not exist. Check before saying them: {specifics.join(', ')}
         </div>
+      )}
+      {card.kb.length > 0 && (
+        <p className="muted kb-used" data-testid="kb-used">
+          From your notes: {card.kb.map((k) => `${snippetLabel(k)} ${k.title}`).join(' · ')}
+        </p>
       )}
       <div className="answer-text" data-testid="answer-text" style={answerTextStyle(display)}>
         {card.text}
