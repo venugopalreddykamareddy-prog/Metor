@@ -78,6 +78,21 @@ test('imports a .md file and can stop using or delete an item', async ({ page })
   await expect(kb.getByLabel('Content')).toHaveValue(/Ran 40 AKS clusters/);
   await kb.getByRole('button', { name: 'Add to knowledge base' }).click();
   await kb.getByTestId('kb-list').getByLabel('Use in answers').uncheck();
+  // The UI updates at once; wait for the IndexedDB write before reloading.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<boolean | undefined>((resolve) => {
+            const req = indexedDB.open('metor');
+            req.onsuccess = () => {
+              const all = req.result.transaction('kb').objectStore('kb').getAll();
+              all.onsuccess = () => resolve((all.result as { active: boolean }[])[0]?.active);
+            };
+          }),
+      ),
+    )
+    .toBe(false);
   await page.reload();
   await page.getByText(/Knowledge base and history/).click();
   await expect(kb.getByTestId('kb-list').getByLabel('Use in answers')).not.toBeChecked();
