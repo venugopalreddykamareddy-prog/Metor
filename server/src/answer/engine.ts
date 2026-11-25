@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
-import { AnswerStreamParser, type AnswerHeader } from '../../../shared/answerFormat.ts';
+import { AnswerStreamParser, ClarificationLimiter, isClarifyOnly, type AnswerHeader } from '../../../shared/answerFormat.ts';
 import { normalizeQuestion } from '../../../shared/extract.ts';
 import type { AnswerEngine, AnswerLength, ServerMessageBody } from '../../../shared/messages.ts';
 import type { UsageLedger } from '../limits/usageLedger.ts';
@@ -105,15 +105,22 @@ export class AnswerSession {
       const parser = new AnswerStreamParser();
       let header: AnswerHeader | null = null;
       let text = '';
+      // Unknown terms and unclear acronyms get only a clarification (ARCHITECTURE §5.4).
+      const clip: { limiter: ClarificationLimiter | null } = { limiter: null };
+      const emit = (t: string) => {
+        if (!t) return;
+        firstTokenMs ??= Date.now() - started;
+        text += t;
+        this.send({ type: 'answer.delta', questionId: req.questionId, text: t });
+      };
       const forward = (events: ReturnType<AnswerStreamParser['push']>) => {
         for (const e of events) {
           if (e.kind === 'header') {
             header = e.header;
+            if (isClarifyOnly(e.header.assessment)) clip.limiter = new ClarificationLimiter(e.header.clarify);
             this.send({ type: 'answer.header', questionId: req.questionId, ...e.header });
-          } else if (e.text) {
-            firstTokenMs ??= Date.now() - started;
-            text += e.text;
-            this.send({ type: 'answer.delta', questionId: req.questionId, text: e.text });
+          } else {
+            emit(clip.limiter ? clip.limiter.push(e.text) : e.text);
           }
         }
       };
@@ -123,10 +130,15 @@ export class AnswerSession {
       }
       if (controller.signal.aborted) return;
       forward(parser.end());
+      // The stream is still read to the end, so the ledger settles on the reported usage.
+      const clipped = clip.limiter?.finished ?? false;
+      if (clip.limiter) emit(clip.limiter.end());
       const usage = await stream.usage;
-      const truncated = (await stream.truncated) ?? false;
+      // A clarification cut short on purpose is complete, even if the model ran on to the budget.
+      const modelTruncated = (await stream.truncated) ?? false;
+      const truncated = !clipped && modelTruncated;
       if (ticket !== null && usage) this.deps.ledger?.settle(ticket, reserved, usage.promptTokens + usage.completionTokens);
-      this.deps.stats?.record(req.engine, usage, truncated);
+      this.deps.stats?.record(req.engine, usage, modelTruncated);
       if (firstTokenMs === null) {
         // Header only, or nothing: the model spent its budget reasoning. Say so instead of an empty card.
         this.deps.log.warn({ questionId: req.questionId, engine: req.engine, tokens: usage }, 'answer had no text');

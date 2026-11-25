@@ -88,7 +88,8 @@ describe('AnswerSession with Groq streaming (faked)', () => {
       note: 'I don’t recognize "Hyperdrive mode".',
       clarify: 'Is it an internal tool?',
     });
-    expect(text()).toBe(answer);
+    // The speculative "if it's latency…" advice is dropped; the clarification question is added.
+    expect(text()).toBe("I'm not familiar with a Hyperdrive mode in Istio — it might be internal. Is it an internal tool?");
     expect(sent.at(-1)).toMatchObject({ type: 'answer.done', model: 'openai/gpt-oss-120b', usage: { promptTokens: 1500, completionTokens: 300 } });
     // The reservation is replaced by the reported usage.
     expect(l.usedInLast(1)).toEqual({ requests: 1, units: 1800 });
@@ -106,6 +107,58 @@ describe('AnswerSession with Groq streaming (faked)', () => {
     await s.handle(request('groq-120b', 'OSPF is a distance-vector protocol, so how does it avoid count-to-infinity?'));
     expect(sent.find((m) => m.type === 'answer.header')).toMatchObject({ assessment: 'incorrect_premise', clarify: null });
     expect(text()).toBe('Actually, OSPF is link-state.');
+  });
+
+  it('drops a speculative explanation after an unrecognized term, but caches and accounts the request', async () => {
+    const l = await ledger();
+    let calls = 0;
+    const body =
+      "I'm not familiar with Kubeflux — it might be internal or misheard. What does it do in your setup? Kubeflux is likely a GitOps controller. You'd set flux.sync=true.";
+    const groq = createGroqAnswer({
+      apiKey: 'k',
+      model: 'm',
+      log,
+      fetch: (async () => {
+        calls += 1;
+        return sse(['TYPE: technical\nASSESSMENT: unrecognized_term\nNOTE: Unrecognized term: Kubeflux.\nCLARIFY: What does Kubeflux do?\nANSWER:\n', body], { prompt_tokens: 900, completion_tokens: 400 }, 7);
+      }) as unknown as typeof fetch,
+    });
+    const { s, sent, text } = session({ 'groq-120b': groq }, l);
+    const req = request('groq-120b', 'How would you tune Kubeflux sync?');
+    await s.handle(req);
+    expect(text()).toBe("I'm not familiar with Kubeflux — it might be internal or misheard. What does it do in your setup?");
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.done', truncated: false, usage: { promptTokens: 900, completionTokens: 400 } });
+    expect(l.usedInLast(1)).toEqual({ requests: 1, units: 1300 });
+    // Asked again: replayed from the cache with the same clipped text, no second request.
+    sent.length = 0;
+    await s.handle({ ...req, questionId: 'q-again' });
+    expect(calls).toBe(1);
+    expect(text()).toBe("I'm not familiar with Kubeflux — it might be internal or misheard. What does it do in your setup?");
+  });
+
+  it('answers an ambiguous acronym with only the clarification question', async () => {
+    const groq = createGroqAnswer({
+      apiKey: 'k',
+      model: 'm',
+      log,
+      fetch: (async () =>
+        sse(
+          ['TYPE: ambiguous\nASSESSMENT: clarification_needed\nNOTE: CA has several meanings.\nCLARIFY: Certificate authority or Cluster Autoscaler?\nANSWER:\n', 'CA could mean a certificate authority or the Cluster Autoscaler. Which one do you mean? If it is the autoscaler, it adds nodes when pods are pending.'],
+          null,
+        )) as unknown as typeof fetch,
+    });
+    const { s, sent, text } = session({ 'groq-120b': groq }, await ledger());
+    await s.handle(request('groq-120b', 'How does CA work?'));
+    expect(text()).toBe('CA could mean a certificate authority or the Cluster Autoscaler. Which one do you mean?');
+    expect(sent.at(-1)).toMatchObject({ type: 'answer.done' });
+  });
+
+  it('leaves normal answers untouched', async () => {
+    const answer = 'BGP picks the path with the highest local preference first. Then shortest AS path. Then lowest MED.';
+    const groq = createGroqAnswer({ apiKey: 'k', model: 'm', log, fetch: (async () => sse(['TYPE: technical\nASSESSMENT: none\nNOTE: -\nCLARIFY: -\nANSWER:\n', answer], null)) as unknown as typeof fetch });
+    const { s, text } = session({ 'groq-120b': groq }, await ledger());
+    await s.handle(request('groq-120b', 'How does BGP choose the best path?'));
+    expect(text()).toBe(answer);
   });
 
   it('keeps the full reservation when Groq reports no usage', async () => {

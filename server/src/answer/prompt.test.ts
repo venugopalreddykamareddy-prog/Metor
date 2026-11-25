@@ -43,6 +43,9 @@ describe('buildMessages', () => {
   it('never builds on a wrong premise or offers invented settings for an unknown term', () => {
     expect(system).toContain('never build the answer on the wrong claim');
     expect(system).toContain('never offer settings, flags, commands, config keys or values as substitutes');
+    expect(system).toContain('For unrecognized_term and clarification_needed, the answer is only the clarification');
+    expect(system).toContain('never guess what it might be');
+    expect(system).toContain('as substitutes. Then stop.');
     expect(system).toContain('two related terms swapped');
   });
 
@@ -106,6 +109,7 @@ describe('buildMessages', () => {
     expect(user({ ...base, question: 'How would you configure AAA on the firewall?' })).toContain(
       'AAA (authentication, authorization and accounting',
     );
+    expect(user({ ...base, question: 'How would you configure AAA on the firewall?' })).toContain('otherwise use clarification_needed and only ask which is meant');
     expect(user(base)).not.toContain('Ambiguous acronyms');
   });
 

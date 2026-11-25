@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import type { Assessment } from '../../../shared/answerFormat.ts';
+import { assessmentDetails, type Assessment } from '../../../shared/answerFormat.ts';
 import { findExperienceClaims } from '../../../shared/experienceClaims.ts';
 import { checkAvailabilityNumbers } from '../../../shared/numericChecks.ts';
 import { unverifiedSpecifics } from '../../../shared/unverifiedSpecifics.ts';
 import type { AnswerGroup } from '../answers/grouping.ts';
+import { firstWordTiming } from '../answers/timing.ts';
 import type { AnswerCard } from '../answers/useAnswers.ts';
 import type { AnswerDisplay } from '../settings.ts';
 
@@ -90,6 +91,8 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
   const card = group.versions[index] ?? group.versions[count - 1];
   if (!card) return null;
   const label = card.header ? ASSESSMENT_LABEL[card.header.assessment] : null;
+  const details = label && card.header ? assessmentDetails(label, card.header, card.text) : null;
+  const timing = firstWordTiming(card);
   const streaming = card.status === 'streaming';
   // A local safety net for hard rule 3: the prompt forbids invented experience, this catches slips.
   const claims = findExperienceClaims(card.text);
@@ -137,8 +140,8 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
       {label && (
         <div className="assessment" data-testid="assessment">
           <strong>{label}</strong>
-          {card.header?.note && <span> · {card.header.note}</span>}
-          {card.header?.clarify && <div className="clarify">Ask: “{card.header.clarify}”</div>}
+          {details?.note && <span> · {details.note}</span>}
+          {details?.clarify && <div className="clarify">Ask: “{details.clarify}”</div>}
         </div>
       )}
       {claims.length > 0 && (
@@ -189,7 +192,7 @@ export function AnswerView({ group, display, onCancel, onRegenerate, focus = fal
       )}
       {!focus && (
         <p className="answer-meta">
-          {card.length} · speech end → first word {seconds(card.firstTextAt === null ? null : card.firstTextAt - card.spokenAt)} · server first
+          {card.length} · {timing.label} {seconds(timing.ms)} · server first
           word {seconds(card.serverFirstTokenMs)} · total {seconds(card.totalMs)}
           {card.cached && ' · reused from cache, no request'}
           {card.usage &&

@@ -17,6 +17,8 @@ export interface AnswerCard {
   text: string;
   error: string | null;
   model: string | null;
+  /** speech: detected from the transcript; typed: typed, merged or regenerated (no speech end). */
+  origin: 'speech' | 'typed';
   /** When the question's sentence last changed (≈ speech end). */
   spokenAt: number;
   sentAt: number;
@@ -75,6 +77,7 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
         text: '',
         error: null,
         model: null,
+        origin: q.manual || fresh ? 'typed' : 'speech',
         spokenAt: q.spokenAt,
         sentAt: now,
         firstTextAt: null,
@@ -122,8 +125,8 @@ export function useAnswers(send: (msg: ClientMessageBody) => boolean) {
     }
   }, []);
 
-  /** Answer timings for the debug line: speech end → first word, per answer. */
-  const latencies = cards.flatMap((c) => (c.firstTextAt ? [c.firstTextAt - c.spokenAt] : []));
+  /** Answer timings for the debug line: speech end → first word, spoken questions only. */
+  const latencies = cards.flatMap((c) => (c.origin === 'speech' && c.firstTextAt ? [c.firstTextAt - c.spokenAt] : []));
 
   return { cards, ask, cancel, handleMessage, latencies };
 }

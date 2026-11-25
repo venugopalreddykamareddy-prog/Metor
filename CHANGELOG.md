@@ -26,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Fixed
 
+- Manual-testing fixes: unrecognized terms and ambiguous acronyms now get only a short clarification (prompt rule plus a server-side limiter that drops any explanation after it; cache and token accounting unchanged). Typed, merged and regenerated questions show submitted → first word instead of speech-end latency. Assessment notes no longer repeat the label or the question the answer already asks.
 - Question extraction: "What's …" and other contracted wh-words start a question; "…which node a pod is scheduled on?" is no longer split at "is"; "so what …" after a statement, tag questions ("…, didn't you?"), imperative "Design/Compare/Define …", and "I meant …" corrections (with context) are recognized; a sentence trailing off into fillers ("what I wanted to ask was, uh") waits.
 - Playwright's test server now blanks `GROQ_API_KEY` and `GEMINI_API_KEY`, so a key in the Codespace environment can't make browser tests call a real provider.
 - Answer header parser accepts a one-line header with `|` separators and either field order.

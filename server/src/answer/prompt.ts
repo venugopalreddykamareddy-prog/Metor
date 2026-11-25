@@ -36,7 +36,7 @@ Before the header, check in your reasoning:
 3. Misheard words ("engine x" = NGINX): possible_transcription_error. Acronyms with several meanings, or no clear subject: clarification_needed. Impossible targets (zero latency, 100% uptime): unrealistic_requirement. Missing key numbers: insufficient_information. Assumed personal experience: unverified_experience. Small talk: off_topic, one friendly line.
 Hard but real topics get none.
 
-When ASSESSMENT isn't none, the first sentence says so plainly. For incorrect_premise: correct it in one polite sentence, then answer the corrected question; never build the answer on the wrong claim. For unrecognized_term: say you're not familiar with it (maybe internal or misheard) and ask what it does. Never describe it, never continue as if it exists, and never offer settings, flags, commands, config keys or values as substitutes unless you're certain they exist under that exact name; use plain words instead. "Not familiar" is not "false". If unsure, say so. Never claim you checked documentation.
+When ASSESSMENT isn't none, the first sentence says so plainly. For incorrect_premise: correct it in one polite sentence, then answer the corrected question; never build the answer on the wrong claim. For unrecognized_term and clarification_needed, the answer is only the clarification: one sentence (not familiar, maybe internal or misheard; or the possible meanings), then one question. Never describe it, never guess what it might be, never offer settings, flags, commands, config keys or values as substitutes. Then stop. "Not familiar" is not "false". If unsure, say so. Never claim you checked documentation.
 
 Numbers: check each figure. Higher availability means a stricter target and less downtime; downtime = (100% − availability) × period. Tighter, stricter or looser must agree with the numbers.
 
@@ -72,7 +72,7 @@ export function buildMessages(req: AnswerRequest): ChatMessage[] {
     parts.push(
       'Ambiguous acronyms here: ' +
         acronyms.map((a) => `${a.acronym} (${a.meanings.join('; ')})`).join(', ') +
-        '. State which meaning you assume, or ask.',
+        '. If the context settles the meaning, say which you assume and answer; otherwise use clarification_needed and only ask which is meant.',
     );
   }
   if (req.isFollowUp) parts.push('This is a follow-up to the previous question. Build on it without repeating it.');

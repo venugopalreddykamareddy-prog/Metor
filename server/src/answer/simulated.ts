@@ -1,5 +1,5 @@
 import { findAmbiguousAcronyms } from '../../../shared/acronyms.ts';
-import type { Assessment, QuestionType } from '../../../shared/answerFormat.ts';
+import { isClarifyOnly, type Assessment, type QuestionType } from '../../../shared/answerFormat.ts';
 import type { AnswerLength } from '../../../shared/messages.ts';
 import type { AnswerRequest } from './prompt.ts';
 import type { AnswerProvider } from './types.ts';
@@ -45,11 +45,13 @@ export function createSimulatedAnswer(delayMs = 25): AnswerProvider {
   return async ({ request, signal }) => {
     const h = classify(request);
     const header = `TYPE: ${h.type}\nASSESSMENT: ${h.assessment}\nNOTE: ${h.note ?? '-'}\nCLARIFY: ${h.clarify ?? '-'}\nANSWER:\n`;
-    const answer = [
-      '[Simulated placeholder, not an AI answer.] Sure, here is how I would put it.',
-      ...BODY.slice(0, SENTENCES[request.length]),
-      'That is the short version, and I am happy to go deeper on any part.',
-    ].join(' ');
+    const answer = isClarifyOnly(h.assessment)
+      ? `[Simulated placeholder, not an AI answer.] ${h.clarify ?? 'Could you say a bit more about what you mean?'}`
+      : [
+          '[Simulated placeholder, not an AI answer.] Sure, here is how I would put it.',
+          ...BODY.slice(0, SENTENCES[request.length]),
+          'That is the short version, and I am happy to go deeper on any part.',
+        ].join(' ');
     async function* chunks(): AsyncGenerator<string> {
       yield header;
       for (const word of answer.split(' ')) {

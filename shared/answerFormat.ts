@@ -101,3 +101,105 @@ export class AnswerStreamParser {
     return [{ kind: 'header', header: parseHeader('') }, { kind: 'text', text }];
   }
 }
+
+/** Assessments where the answer is only a clarification: no explanation until the interviewer replies. */
+export const CLARIFY_ONLY: readonly Assessment[] = ['unrecognized_term', 'clarification_needed'];
+
+export const isClarifyOnly = (a: Assessment): boolean => CLARIFY_ONLY.includes(a);
+
+/** End offsets of complete sentences; a terminator at the very end only counts once the text is final. */
+function sentenceEnds(text: string, final: boolean): number[] {
+  const re = final ? /[.?!]+["'”’)]*(?=\s|$)/g : /[.?!]+["'”’)]*(?=\s)/g;
+  return [...text.matchAll(re)].map((m) => m.index + m[0].length);
+}
+
+/**
+ * Keeps a clarification-only answer to its clarification, even when the model goes on to explain
+ * the unknown term anyway: the first sentence streams live, a second is kept only if it's the
+ * question, and anything after is dropped. With no question asked, the header's CLARIFY is added.
+ */
+export class ClarificationLimiter {
+  private text = '';
+  private forwarded = 0;
+  private firstEnd: number | null = null;
+  private done = false;
+  private asked = false;
+
+  private readonly clarify: string | null;
+
+  constructor(clarify: string | null) {
+    this.clarify = clarify;
+  }
+
+  /** True once the clarification is complete; later text is dropped. */
+  get finished(): boolean {
+    return this.done;
+  }
+
+  push(chunk: string): string {
+    if (this.done) return '';
+    this.text += chunk;
+    return this.advance(false);
+  }
+
+  /** Call when the stream ends: flushes what's left and adds CLARIFY if no question was asked. */
+  end(): string {
+    const rest = this.done ? '' : this.advance(true);
+    this.done = true;
+    if (this.asked || !this.clarify) return rest;
+    return `${rest}${this.forwarded > 0 || rest ? ' ' : ''}${this.clarify}`;
+  }
+
+  private advance(final: boolean): string {
+    const ends = sentenceEnds(this.text, final);
+    let out = '';
+    if (this.firstEnd === null) {
+      const first = ends[0];
+      if (first === undefined) {
+        out = this.text.slice(this.forwarded);
+        this.forwarded = this.text.length;
+        if (final) this.done = true;
+        if (final && out.includes('?')) this.asked = true;
+        return out;
+      }
+      out = this.text.slice(this.forwarded, first);
+      this.forwarded = this.firstEnd = first;
+      if (this.text.slice(0, first).trimEnd().replace(/["'”’)]+$/, '').endsWith('?')) {
+        this.done = this.asked = true;
+        return out;
+      }
+    }
+    const second = ends[1];
+    if (second === undefined && !final) return out;
+    this.done = true;
+    const sentence = this.text.slice(this.firstEnd, second ?? this.text.length);
+    if (!sentence.includes('?')) return out;
+    this.asked = true;
+    this.forwarded += sentence.length;
+    return out + sentence;
+  }
+}
+
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * The note and clarify question to show under an assessment label, without repeating the label
+ * ("Unrecognized term · Unrecognized term: X"), each other, or a question the answer already asks.
+ */
+export function assessmentDetails(
+  label: string,
+  header: Pick<AnswerHeader, 'assessment' | 'note' | 'clarify'>,
+  answer: string,
+): { note: string | null; clarify: string | null } {
+  const names = [label, header.assessment, header.assessment.replace(/_/g, ' ')].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  let note = header.note?.replace(new RegExp(`^(?:${names.join('|')})\\s*(?:[:\\-–—·.,]\\s*|$)`, 'i'), '').trim() ?? null;
+  if (note) note = note.charAt(0).toUpperCase() + note.slice(1);
+  if (!note || names.some((n) => normalize(n) === normalize(note ?? ''))) note = null;
+  let clarify = header.clarify;
+  if (clarify) {
+    const c = normalize(clarify);
+    const asked = isClarifyOnly(header.assessment) && answer.includes('?');
+    if (asked || (note && normalize(note) === c) || normalize(answer).includes(c)) clarify = null;
+  }
+  return { note, clarify };
+}
