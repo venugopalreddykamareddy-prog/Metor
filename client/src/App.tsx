@@ -90,7 +90,11 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
   const [sessions, setSessions] = useState<SavedSession[]>([]);
   const recordingStartedAt = useRef(0);
   useEffect(() => {
-    void purgeExpired(sessionStore, Date.now()).then(setSessions, () => undefined);
+    // On app start and hourly (SECURITY_PRIVACY §Deletion ships with storage).
+    const purge = () => void purgeExpired(sessionStore, Date.now()).then(setSessions, () => undefined);
+    purge();
+    const timer = setInterval(purge, 60 * 60_000);
+    return () => clearInterval(timer);
   }, []);
   const [usage, setUsage] = useState<Usage | null>(null);
   // A mode the user picked is kept; otherwise Groq Whisper within its free quota, then Browser speech.

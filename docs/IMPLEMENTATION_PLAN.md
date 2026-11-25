@@ -250,7 +250,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 5 — Resume, job description, and verified experience
+## Phase 5 — Resume, job description, and verified experience (in review, PR #7)
 
 **Objective:** Knowledge base with provenance labels; grounded answers and experience checks.
 
@@ -263,6 +263,15 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 - Resume-based traps and behavioral items in the evaluation set are re-run with a sample KB.
 
 **Acceptance:** behavioral question with a matching verified story produces STAR using only that story's facts; with no match, the answer says so and labels any example hypothetical; all `experience_trap` items answered without claiming unverified experience; internal tools added by the user are no longer flagged; injection test documents ("ignore previous instructions…") do not change behavior; with persistence off (the default), nothing session-related is written to IndexedDB (test); expired sessions are purged on startup (test with a mocked clock).
+
+**Status 2026-11-25** (✅ verified by tests, ⬜ open)
+- [x] KB in IndexedDB with provenance; resume, job description, stories, projects, skills, internal terms, reference notes; `.txt`/`.md` import (PDF/DOCX stay P2: they'd add dependencies). Settings stay in `localStorage` (no `settings` store needed).
+- [x] Keyword retrieval sends at most 6 excerpts (≤ 2,400 chars) per question, never the whole KB; grounding rules and STAR rule are sent only when they apply (unit tests).
+- [x] Behavioral question with a matching verified story → answer from that story only; no match → "no verified experience" and a hypothetical example (simulated engine, unit + e2e). Experience warning flags claims the verified excerpts don't back.
+- [x] Internal terms named in a question are always sent as known context (unit test).
+- [x] Injection text in uploads can't close the `<kb>` block and is treated as data (prompt test, e2e).
+- [x] Persistence off by default writes no session (unit + e2e on IndexedDB); expired sessions purged on start and hourly (mocked-clock test); per-session delete, export, delete everything (e2e).
+- [ ] Re-run resume traps and behavioral items on Groq with a sample KB (live calls need the owner's approval).
 
 ---
 
