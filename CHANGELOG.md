@@ -26,6 +26,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Fixed
 
+- Code review of Phase 4 (2026-11-25): Stop waits (up to 25 s) for the last Groq transcription instead of dropping it; logout, auth expiry and session end abort queued and in-flight Groq transcription; a malformed Groq response no longer stalls transcription; detected questions are answered in order instead of cancelling each other (a typed question still replaces); a mic that finishes opening after logout or unmount is released at once; quota reservations are written to disk before any provider call and fail closed on write errors; a missing or unreadable answer header is shown as "Unverified answer", not as no issue.
+- Regenerate reuses the original question's context; Groq answer streams accept CRLF delimiters and a stream that ends early counts as cut off.
 - Accuracy-check term recall: a term next to `-` or `/` ("Terraform-managed", "Terraform/Helm") was marked missed; whole-word matching keeps p95/p99 and AKS/EKS distinct.
 - Question extraction: an unpunctuated question followed by a first-person answer ("…for a payments api i would start with p99…") no longer merges into one question (fixture ext-31, from the owner's Browser speech run).
 - Manual-testing fixes: unrecognized terms and ambiguous acronyms now get only a short clarification (prompt rule plus a server-side limiter that drops any explanation after it; cache and token accounting unchanged). Typed, merged and regenerated questions show submitted → first word instead of speech-end latency. Assessment notes no longer repeat the label or the question the answer already asks.

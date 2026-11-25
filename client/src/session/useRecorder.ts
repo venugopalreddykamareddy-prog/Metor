@@ -83,7 +83,12 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
   }, []);
 
   /** Stops the mic and forgets the session. Used by stop, logout, auth expiry and terminal failures. */
+  // Bumped by release(): a start() still waiting for the mic must not take it over afterwards
+  // (logout, auth expiry, unmount or Stop during the permission prompt).
+  const startGenRef = useRef(0);
+
   const release = useCallback(() => {
+    startGenRef.current += 1;
     activeRef.current?.stop();
     activeRef.current = null;
     sessionIdRef.current = null;
@@ -181,6 +186,7 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     ws.start();
     return () => {
       ws.stop();
+      startGenRef.current += 1;
       activeRef.current?.stop();
       activeRef.current = null;
     };
@@ -277,13 +283,22 @@ export function useRecorder(onAuthEnded: () => void, onAnswerMessage: (msg: Answ
     lastFinalSeqRef.current = 0;
     setTranscript(emptyTranscript);
     setLatencies([]);
+    const gen = startGenRef.current;
+    let started: ActiveRecording;
     try {
-      activeRef.current = mode === 'webspeech' ? await startBrowserRecording() : await startServerRecording(mode);
+      started = mode === 'webspeech' ? await startBrowserRecording() : await startServerRecording(mode);
     } catch (err) {
+      if (gen !== startGenRef.current) return;
       setPhase('idle');
       setError(micErrorMessage(err));
       return;
     }
+    if (gen !== startGenRef.current) {
+      // Cancelled while the mic was opening: release it at once, never record in the background.
+      started.stop();
+      return;
+    }
+    activeRef.current = started;
     timeRef.current = { total: 0, since: Date.now() };
     setElapsedMs(0);
     setPhase('recording');

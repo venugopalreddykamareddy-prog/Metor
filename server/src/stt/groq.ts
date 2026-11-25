@@ -52,6 +52,23 @@ class VoiceDetector {
   }
 }
 
+/** Segment texts from a verbose_json body, or null when it isn't one (non-JSON, wrong shape). */
+export function parseTranscription(raw: string): string[] | null {
+  let body: GroqResponse;
+  try {
+    body = JSON.parse(raw) as GroqResponse;
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== 'object') return null;
+  if (Array.isArray(body.segments)) {
+    return body.segments
+      .filter((s) => s && typeof s.text === 'string' && (typeof s.no_speech_prob !== 'number' || s.no_speech_prob < MAX_NO_SPEECH_PROB))
+      .map((s) => s.text);
+  }
+  return typeof body.text === 'string' ? [body.text] : null;
+}
+
 export function createGroqStt(opts: GroqOptions): SttFactory {
   const doFetch = opts.fetch ?? fetch;
 
@@ -65,6 +82,10 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
     let shortCloses: number[] = [];
     let blockedUntil = 0;
     let queue = Promise.resolve();
+    // Aborted on dispose: queued segments are skipped and the request in flight is cancelled, so
+    // nothing reaches Groq after logout or auth expiry (hard rule 8).
+    const disposed = new AbortController();
+    const whenDisposed = new Promise<null>((r) => disposed.signal.addEventListener('abort', () => r(null), { once: true }));
 
     const reset = () => {
       frames = [];
@@ -80,7 +101,13 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
         return;
       }
       const closedAt = Date.now();
-      queue = queue.then(() => upload(segment, closedAt));
+      // A failing upload must never break the chain for later segments.
+      queue = queue
+        .then(() => (disposed.signal.aborted ? undefined : upload(segment, closedAt)))
+        .catch((err: unknown) => {
+          opts.log.warn({ err: (err as Error).name }, 'groq segment failed');
+          if (!disposed.signal.aborted) sink.partial('');
+        });
     };
 
     const upload = async (
@@ -92,9 +119,12 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
         sink.partial('');
         return;
       }
-      if (!opts.ledger.reserve({ requests: 1, units: Math.max(BILLED_MIN_SECONDS, Math.ceil(durationS)) })) {
+      const reserved = await opts.ledger.reserveDurable({ requests: 1, units: Math.max(BILLED_MIN_SECONDS, Math.ceil(durationS)) });
+      if (disposed.signal.aborted) return;
+      if (!reserved.ok) {
         sink.partial('');
-        sink.error('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Switch to Simulated or Browser speech, or wait.");
+        if (reserved.reason === 'storage') sink.error('provider_unavailable', "Metor couldn't record quota usage, so it didn't call Groq. Check the server's data folder.");
+        else sink.error('quota_exhausted', "Metor's Groq free-tier budget is used up for now. Switch to Simulated or Browser speech, or wait.");
         return;
       }
 
@@ -112,20 +142,23 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
       form.append('response_format', 'verbose_json');
       form.append('prompt', WHISPER_PROMPT);
 
-      let res: Response;
+      let res: Response | null;
       try {
-        res = await doFetch(GROQ_TRANSCRIPTIONS_URL, {
+        // Raced with dispose so a fetch that ignores the abort can't hold the queue.
+        res = await Promise.race([whenDisposed, doFetch(GROQ_TRANSCRIPTIONS_URL, {
           method: 'POST',
           headers: { authorization: `Bearer ${opts.apiKey}` },
           body: form,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
+          signal: AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), disposed.signal]),
+        })]);
       } catch (err) {
+        if (disposed.signal.aborted) return;
         opts.log.warn({ err: (err as Error).name, durationS }, 'groq request failed');
         sink.partial('');
         sink.error('provider_unavailable', 'Could not reach Groq. Transcription will retry with the next segment.');
         return;
       }
+      if (!res || disposed.signal.aborted) return;
       const ms = Date.now() - closedAt;
       if (res.status === 429) {
         const retryAfter = Number(res.headers.get('retry-after') ?? 60);
@@ -141,10 +174,14 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
         sink.error('provider_unavailable', `Groq returned HTTP ${res.status}.`);
         return;
       }
-      const body = (await res.json()) as GroqResponse;
-      const parts = body.segments
-        ? body.segments.filter((s) => (s.no_speech_prob ?? 0) < MAX_NO_SPEECH_PROB).map((s) => s.text)
-        : [body.text ?? ''];
+      const parts = parseTranscription(await res.text().catch(() => ''));
+      if (disposed.signal.aborted) return;
+      if (!parts) {
+        opts.log.warn({ status: res.status, durationS }, 'groq malformed response');
+        sink.partial('');
+        sink.error('provider_unavailable', 'Groq returned an unreadable transcription; continuing with the next segment.');
+        return;
+      }
       // Raw Whisper text; term fixes and cleanup happen in the client's cleaned view.
       let text = parts.join(' ').replace(/\s+/g, ' ').trim();
       if (segment.speechMs < 1500 && HALLUCINATIONS.test(text)) text = '';
@@ -190,6 +227,12 @@ export function createGroqStt(opts: GroqOptions): SttFactory {
         if (frames.length > 0) close();
       },
       discardPartial() {
+        reset();
+        preRoll = [];
+      },
+      flush: () => queue,
+      dispose() {
+        disposed.abort();
         reset();
         preRoll = [];
       },

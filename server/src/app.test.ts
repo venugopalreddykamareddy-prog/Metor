@@ -455,7 +455,7 @@ describe('answers', () => {
     conn.ws.terminate();
   });
 
-  it('cancels on request, and a new question replaces the one in flight', async () => {
+  it('cancels on request, and a typed question replaces the one in flight', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
     const slowGroq = (async () => {
@@ -482,7 +482,8 @@ describe('answers', () => {
       const b = ask({ engine: 'groq-120b' });
       conn.sendJson(b);
       await conn.waitFor((m) => m.type === 'answer.delta' && m.questionId === b.questionId);
-      const c = ask();
+      // A typed question (replace) stops the one in flight; detected ones would queue instead.
+      const c = { ...ask(), replace: true };
       conn.sendJson(c);
       await conn.waitFor((m) => m.type === 'answer.failed' && m.questionId === b.questionId && m.code === 'cancelled');
       await conn.waitFor((m) => m.type === 'answer.done' && m.questionId === c.questionId);

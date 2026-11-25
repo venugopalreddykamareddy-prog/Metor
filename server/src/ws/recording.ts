@@ -8,6 +8,8 @@ const ACK_INTERVAL_MS = 1000;
 /** No audio for this long counts as end of speech (also covers Pause). */
 const IDLE_FINALIZE_MS = 1000;
 const STATS_INTERVAL_MS = 1000;
+/** Upper bound for Stop to wait on the last transcription (Groq requests time out at 20 s). */
+const STOP_FLUSH_MS = 25_000;
 
 type FinalMessage = Extract<ServerMessageBody, { type: 'transcript.final' }>;
 
@@ -114,15 +116,24 @@ export class Recording {
     this.stt.discardPartial();
   }
 
-  stop(): void {
+  /**
+   * Stop: close the last segment and wait (bounded) for its transcription, so the final text still
+   * reaches the client. The caller disposes afterwards.
+   */
+  async stop(maxWaitMs = STOP_FLUSH_MS): Promise<void> {
     this.clearIdleTimer();
     this.stt.finalizeNow();
     this.ack();
+    if (!this.stt.flush) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([this.stt.flush(), new Promise<void>((r) => (timer = setTimeout(r, maxWaitMs)))]);
+    clearTimeout(timer);
   }
 
   dispose(): void {
     this.clearIdleTimer();
     clearInterval(this.statsTimer);
+    this.stt.dispose?.();
     this.socket = null;
   }
 

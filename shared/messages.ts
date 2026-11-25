@@ -43,6 +43,8 @@ const answerRequest = z.strictObject({
   /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
   earlier: z.array(z.string().max(300)).max(10).optional(),
   isFollowUp: z.boolean(),
+  /** The user asked this themselves: stop the answer in flight and drop waiting ones (else it queues). */
+  replace: z.boolean().optional(),
   /** Regenerate: skip the answer cache and make a new request. */
   fresh: z.boolean().optional(),
 });
