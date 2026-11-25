@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Roadmap: Coding Interview Mode planned as Phases 13–15 (REQUIREMENTS §2.10, FR-C1–C13); code execution gated on a separate security ADR and the owner's approval (hard rule 5 unchanged); interview profiles for QA, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering and custom roles. Documentation only.
 - Phase 4 (PR #6): question understanding and streaming answers. Local question extraction from the clean transcript (compound questions kept whole, requests without "?", incomplete phrases wait, superseded and repeated questions, duplicates dropped); Groq GPT-OSS 120B/20B and simulated answer providers; one request per question with a parsed TYPE / NOTE / ASSESSMENT / CLARIFY header; cancel and replace; per-session limits; free-tier token ledger; `/api/usage`.
 - Answer workspace: three resizable panels (drag or arrow keys, remembered) with the answers panel at about 55% by default; transcript and questions collapse to rails; focus mode for the latest question and answer (Esc exits; the recording indicator stays visible); answer text size and line spacing settings; Copy answer button.
 - Answers are grouped per question: Regenerate and "Answer again" add versions instead of replacing, an answer stopped by a newer question keeps its text, and a repeated question moves its earlier answer to the end. Off-topic results show as a one-line note, not an answer card.
