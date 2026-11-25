@@ -158,3 +158,43 @@ test('a Phase 5 (v1) database migrates into the default profile without losing a
   );
   expect(tagged).toEqual(['default', 'default']);
 });
+
+test('practice: each profile has its own editable bank, and feedback is scored on request', async ({ page }) => {
+  await login(page);
+  const practice = page.getByTestId('practice');
+  await page.getByText(/^Practice \(/).click();
+  // The default (SRE) profile gets the drafted SRE bank.
+  await practice.getByText('Edit question bank').click();
+  await expect(practice.getByTestId('practice-bank')).toContainText('error budget');
+
+  await addProfile(page, 'QA Automation Engineer', 'QA Auto');
+  await expect(practice.getByTestId('practice-bank')).toContainText('Page Object Model');
+  await expect(practice.getByTestId('practice-bank')).not.toContainText('error budget');
+  await practice.getByLabel('New question', { exact: true }).fill('How do you test a file upload?');
+  await practice.getByRole('button', { name: 'Add question' }).click();
+  await expect(practice.getByTestId('practice-bank')).toContainText('How do you test a file upload?');
+
+  // A made-up question, an answer, and simulated feedback with the four scores.
+  await practice.getByLabel('Practice category').selectOption('made_up');
+  await practice.getByRole('button', { name: 'Next question' }).click();
+  await expect(practice.getByTestId('practice-question')).toContainText('Quantleaf');
+  await practice.getByRole('button', { name: /what a good answer notices/ }).click();
+  await expect(practice.getByTestId('practice-question')).toContainText('Not a known Cypress feature');
+  await practice.getByLabel('Your answer').fill("I'm not familiar with Quantleaf retries. Could you tell me what they do?");
+  await practice.getByRole('button', { name: 'Get feedback' }).click();
+  await expect(practice.getByTestId('practice-scores')).toHaveText('Accuracy 3/5 · Relevance 4/5 · Communication 4/5 · Completeness 2/5');
+  await expect(practice.getByTestId('practice-feedback')).toContainText('not AI feedback');
+  await expect(practice.getByTestId('practice-weak')).toContainText('completeness 2');
+  // Feedback doesn't land in the answers panel.
+  await expect(page.getByTestId('answer')).toHaveCount(0);
+
+  // The added question stays with QA Auto only, across a reload.
+  await selectProfile(page, 'My profile');
+  await expect(practice.getByTestId('practice-bank')).not.toContainText('file upload');
+  await page.reload();
+  await expect.poll(() => activeProfile(page)).toBe('My profile');
+  await selectProfile(page, 'QA Auto');
+  await page.getByText(/^Practice \(/).click();
+  await practice.getByText('Edit question bank').click();
+  await expect(practice.getByTestId('practice-bank')).toContainText('How do you test a file upload?');
+});

@@ -55,7 +55,7 @@ describe('deleteProfile', () => {
     expect(await stores.kb.all()).toEqual([expect.objectContaining({ id: 'b', sharedWith: [] })]);
     expect((await stores.sessions.all()).map((s) => s.id)).toEqual(['s2']);
     expect(await stores.questions.all()).toEqual([]);
-    expect(removed).toEqual(['metor.corrections.qa']);
+    expect(removed).toEqual(['metor.corrections.qa', 'metor.practice.seeded.qa']);
   });
 
   it('refuses to delete the last profile', async () => {

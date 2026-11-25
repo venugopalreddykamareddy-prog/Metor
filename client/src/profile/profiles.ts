@@ -37,6 +37,7 @@ export async function deleteProfile(stores: ProfileStores, id: string, storage: 
   for (const s of await stores.sessions.all()) if ((s.profileId ?? DEFAULT_PROFILE_ID) === id) await stores.sessions.delete(s.id);
   for (const q of await stores.questions.all()) if (q.profileId === id) await stores.questions.delete(q.id);
   storage.removeItem(correctionsKey(id));
+  storage.removeItem(`metor.practice.seeded.${id}`);
   await stores.profiles.delete(id);
   return true;
 }

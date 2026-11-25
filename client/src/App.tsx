@@ -11,7 +11,9 @@ import { transcriptText } from './session/transcript.ts';
 import { useRecorder, type AnswerMessage, type TranscriptionMode } from './session/useRecorder.ts';
 import { retrieve, visibleTo, type KbItem } from '../../shared/kb.ts';
 import { DEFAULT_PROFILE_ID, profileContext } from '../../shared/profile.ts';
-import { deleteProfile, type PracticeQuestion } from './profile/profiles.ts';
+import { deleteProfile } from './profile/profiles.ts';
+import { questionStore, usePractice } from './practice/usePractice.ts';
+import { PracticePanel } from './ui/PracticePanel.tsx';
 import { profileStore, useProfiles } from './profile/useProfiles.ts';
 import { ProfileBar } from './ui/ProfileBar.tsx';
 import { deleteDatabase, idbStore } from './kb/db.ts';
@@ -49,7 +51,6 @@ export function App() {
 }
 
 const sessionStore = idbStore<SavedSession>('sessions');
-const questionStore = idbStore<PracticeQuestion>('questions');
 
 const MODE_LABEL: Record<TranscriptionMode, string> = {
   simulated: 'Simulated',
@@ -80,7 +81,9 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
     kb: retrieve(kbItems, [q.text, ...q.statements].join(' ')),
     profile: profileContext(profile),
   }));
-  answerHandler.current = answers.handleMessage;
+  // Practice feedback shares the answer channel; its messages go to the practice panel.
+  const practice = usePractice(profile, recorder.send, (text) => retrieve(kbItems, text));
+  answerHandler.current = (msg) => (practice.owns(msg.questionId) ? practice.handle(msg) : answers.handleMessage(msg));
 
   const available: TranscriptionMode[] = [
     'simulated',
@@ -434,6 +437,19 @@ function Recorder({ me, onLoggedOut }: { me: Me; onLoggedOut: () => void }) {
               {...displayProps}
             />
           }
+        />
+
+        <PracticePanel
+          practice={practice}
+          engines={
+            me.providers.groq
+              ? [
+                  { value: 'groq-120b', label: 'GPT-OSS 120B, medium reasoning (default)' },
+                  { value: 'groq-20b', label: 'GPT-OSS 20B (fast mode)' },
+                ]
+              : [{ value: 'simulated', label: 'Simulated (not AI)' }]
+          }
+          transcript={cleanTranscriptText(clean)}
         />
 
         <KnowledgeBase
