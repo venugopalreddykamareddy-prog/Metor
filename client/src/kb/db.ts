@@ -1,0 +1,90 @@
+// Local storage for the knowledge base and opted-in sessions: one IndexedDB database in this
+// browser, nothing on the server (SECURITY_PRIVACY). No wrapper library: the platform API is enough.
+
+export interface Store<T extends { id: string }> {
+  all(): Promise<T[]>;
+  put(value: T): Promise<void>;
+  delete(id: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export type StoreName = 'kb' | 'sessions';
+const DB_NAME = 'metor';
+const DB_VERSION = 1;
+
+let opening: Promise<IDBDatabase> | null = null;
+
+function open(): Promise<IDBDatabase> {
+  opening ??= new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      for (const name of ['kb', 'sessions'] satisfies StoreName[]) {
+        if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => {
+      opening = null;
+      reject(req.error ?? new Error('IndexedDB unavailable'));
+    };
+  });
+  return opening;
+}
+
+function run<R>(name: StoreName, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<R>): Promise<R> {
+  return open().then(
+    (db) =>
+      new Promise<R>((resolve, reject) => {
+        const tx = db.transaction(name, mode);
+        const req = fn(tx.objectStore(name));
+        tx.oncomplete = () => resolve(req.result);
+        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
+      }),
+  );
+}
+
+export function idbStore<T extends { id: string }>(name: StoreName): Store<T> {
+  return {
+    all: () => run(name, 'readonly', (s) => s.getAll() as IDBRequest<T[]>),
+    put: (value) => run(name, 'readwrite', (s) => s.put(value)).then(() => undefined),
+    delete: (id) => run(name, 'readwrite', (s) => s.delete(id)).then(() => undefined),
+    clear: () => run(name, 'readwrite', (s) => s.clear()).then(() => undefined),
+  };
+}
+
+/** "Delete everything": removes the whole database (KB and saved sessions). */
+export function deleteDatabase(): Promise<void> {
+  const pending = opening;
+  opening = null;
+  return (pending ? pending.then((db) => db.close(), () => undefined) : Promise.resolve()).then(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error ?? new Error('Could not delete local data'));
+        req.onblocked = () => resolve(); // finishes once other tabs close it
+      }),
+  );
+}
+
+/** In-memory store with the same contract, for unit tests. */
+export function memoryStore<T extends { id: string }>(initial: T[] = []): Store<T> & { writes: number } {
+  const map = new Map(initial.map((v) => [v.id, v]));
+  const store = {
+    writes: 0,
+    all: async () => [...map.values()],
+    put: async (value: T) => {
+      store.writes++;
+      map.set(value.id, value);
+    },
+    delete: async (id: string) => {
+      store.writes++;
+      map.delete(id);
+    },
+    clear: async () => {
+      store.writes++;
+      map.clear();
+    },
+  };
+  return store;
+}
