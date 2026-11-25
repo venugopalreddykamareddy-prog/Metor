@@ -22,7 +22,8 @@ I won't merge features that weaken these controls.
 | Raw audio | High | Streamed through server memory to the provider (Groq: per-utterance upload), or sent by the browser to its vendor's speech service (Web Speech); never stored by this app | Not stored |
 | Transcripts | High (may include third parties' speech) | Browser memory; IndexedDB **only after the user opts in** | **Not persisted by default.** Opt-in retention: 7 / 30 / 90 days |
 | Resumes, JDs, stories | High (PII) | Browser IndexedDB (explicit user upload) | Until user deletes |
-| Vocabulary corrections ("heard as → should be") | Low–medium (may name employers or internal tools) | Browser `localStorage`, written when the user adds a rule | Until the user removes the rule or clears site data |
+| Vocabulary corrections ("heard as → should be") | Low–medium (may name employers or internal tools) | Browser `localStorage`, per interview profile, written when the user adds a rule | Until the user removes the rule, deletes the profile, or clears site data |
+| Interview profiles and practice questions (Phase 6) | Low–medium (role, level, topics, own questions) | Browser IndexedDB | Until the user deletes the profile or uses Delete everything. Requests carry only role, level, topics and answer preferences; practice answers are sent only when the user asks for feedback |
 | AI answers | Medium | Same as transcripts | Same as transcripts |
 | Word corrections ("heard as → should be") | Low | Browser `localStorage` | Until removed in the UI |
 | API keys (`GROQ_API_KEY`, `GEMINI_API_KEY`) | Critical | Server env vars / Codespaces secrets only | — |

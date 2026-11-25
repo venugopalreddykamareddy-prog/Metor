@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Added
 
+- Phase 6 (PR #11): interview profiles for QA Manual, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering and custom roles, each with its own knowledge base, vocabulary, corrections, answer preferences, history, answers and cache; explicit per-item sharing; migration of existing data to a default profile; practice mode with drafted, editable question banks and scored feedback on request.
 - Phase 6 plan (approved 2026-11-25): universal interview profiles with isolated resumes, job descriptions, experience, vocabulary, preferences, context and caching; practice mode on top. Documentation only.
 - Phase 5 (PR #7; owner's manual acceptance passed 2026-11-25): knowledge base in the browser (resume, job description, stories, projects, skills, internal terms, reference notes) with provenance labels and `.txt`/`.md` import; per-question keyword retrieval sends only matching excerpts; grounded answers claim experience only from verified items; STAR for behavioral questions; natural opener and short wrap-up; opt-in session history with 7/30/90-day expiry, purge, per-session delete, export and delete everything.
 - Roadmap: Coding Interview Mode planned as Phases 13–15 (REQUIREMENTS §2.10, FR-C1–C13); code execution gated on a separate security ADR and the owner's approval (hard rule 5 unchanged); interview profiles for QA, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering and custom roles. Documentation only.

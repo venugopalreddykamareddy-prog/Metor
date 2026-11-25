@@ -276,7 +276,7 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 
 ---
 
-## Phase 6 — Interview profiles and practice mode (plan approved 2026-11-25)
+## Phase 6 — Interview profiles and practice mode (in review, PR #11)
 
 **Objective:** Universal interview profiles (QA, QA Automation, SDET, SRE, DevOps, Cloud, Networking, Software Engineering, custom roles; REQUIREMENTS §1), each with its own resumes, job descriptions, verified experience, vocabulary and answer preferences, and context and caching kept separate per profile. Then practice mode on top: question banks per profile, feedback on spoken answers, weak-topic tracking and session summaries (REQUIREMENTS §2.7).
 
@@ -302,6 +302,19 @@ TypeScript strict. No UI library. Update CHANGELOG.md. Do not implement audio, a
 **Checkpoint 6.4 — Evaluation and docs**
 - A small profile set per role in `eval/` (questions, expected assessment, no live answers), run with simulated answers in CI. The Groq run needs the owner's approval and budget.
 - ADR-016 (profiles and isolation), ARCHITECTURE and SECURITY_PRIVACY updates, CHANGELOG.
+
+**Status 2026-11-25** (✅ verified by automated tests with simulated providers, ⬜ open)
+- [x] Two profiles with different knowledge bases: answers use only the active profile's excerpts; answers and context stay in their profile; the same question isn't served from another profile's cache (unit + e2e).
+- [x] Sharing is explicit per item, can be undone from either side, and is never automatic (unit + e2e).
+- [x] Profile framing: QA/SDET/SWE/custom roles replace the SRE line; preferences add text only when changed (prompt tests).
+- [x] Profile vocabulary reaches the Whisper prompt within its limit and Web Speech hints; corrections are per profile, pre-profile corrections stay with the default profile.
+- [x] Migration from the Phase 5 (v1) database keeps every KB item and session under the default profile (e2e with a real v1 database).
+- [x] Delete profile removes its items, sessions, practice questions, corrections and seed flag, unshares others' items, and keeps the last profile (unit + e2e); active profile persists across reloads.
+- [x] Practice: drafted editable banks for all nine roles (owner review pending); feedback only on request, scored on four areas, routed to the practice panel; banks isolated per profile (unit + e2e).
+- [ ] Owner review of the drafted question banks.
+- [ ] Practice results are kept in memory for the session only; saving them with opted-in history, a per-topic weak-area view across sessions, and LLM session summaries are deferred.
+- [ ] Ambiguous-acronym hints ordered by profile: deferred.
+- [ ] Groq run of the profile questions (misleading and made-up items per role): needs the owner's approval for live calls.
 
 **Acceptance (to be tested):**
 - Two profiles with different resumes: an answer uses only the active profile's excerpts (unit + e2e), and switching profile clears turns and cache hits.
