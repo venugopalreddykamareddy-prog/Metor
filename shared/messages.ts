@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { ASSESSMENTS, QUESTION_TYPES } from './answerFormat.ts';
 import { FRAME_SAMPLES } from './audio.ts';
+import { MAX_SNIPPETS, kbSnippetSchema } from './kb.ts';
 
 export { FRAME_MS, FRAME_SAMPLES, SAMPLE_RATE } from './audio.ts';
 export const AUDIO_HEADER_BYTES = 4;
@@ -43,6 +44,8 @@ const answerRequest = z.strictObject({
   /** Older questions, oldest first: the local rolling summary (ARCHITECTURE §5.5), ~200 tokens at most. */
   earlier: z.array(z.string().max(300)).max(10).optional(),
   isFollowUp: z.boolean(),
+  /** Knowledge-base excerpts picked locally for this question (Phase 5); never the whole KB. */
+  kb: z.array(kbSnippetSchema).max(MAX_SNIPPETS).optional(),
   /** Regenerate: skip the answer cache and make a new request. */
   fresh: z.boolean().optional(),
 });

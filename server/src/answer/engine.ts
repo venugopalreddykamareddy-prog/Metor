@@ -9,6 +9,11 @@ import type { AnswerStats } from './stats.ts';
 import { ProviderError, type AnswerProvider } from './types.ts';
 
 const REMEMBERED_QUESTION_IDS = 200;
+/**
+ * Engines allowed to receive resume and KB excerpts. A new engine must decide here; the Gemini free
+ * tier never may (hard rule 11). Groq needs Zero Data Retention turned on by the owner (SECURITY_PRIVACY).
+ */
+const RECEIVES_PERSONAL_DATA: Record<AnswerEngine, boolean> = { simulated: true, 'groq-120b': true, 'groq-20b': true };
 /** Finished answers kept per connection for reuse; memory only, gone on disconnect or logout. */
 const CACHE_ENTRIES = 50;
 const CACHE_TTL_MS = 30 * 60_000;
@@ -25,7 +30,7 @@ interface CachedAnswer {
  * topics, raw text) → same answer. The client sends turns only when the question needs them.
  */
 export function cacheKey(req: AnswerRequest): string {
-  const parts = [req.engine, req.length, normalizeQuestion(req.question), req.heard ?? '', req.statements, req.turns, req.earlier ?? [], req.isFollowUp];
+  const parts = [req.engine, req.length, normalizeQuestion(req.question), req.heard ?? '', req.statements, req.turns, req.earlier ?? [], req.isFollowUp, req.kb ?? []];
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
@@ -65,6 +70,10 @@ export class AnswerSession {
     this.seen.push(req.questionId);
     if (this.seen.length > REMEMBERED_QUESTION_IDS) this.seen.shift();
 
+    // KB excerpts are personal data: only engines cleared for it may receive them (FR-K4).
+    if (req.kb?.length && !RECEIVES_PERSONAL_DATA[req.engine]) {
+      return fail('provider_unavailable', `${req.engine} may not receive knowledge-base content.`);
+    }
     const provider = this.deps.providers[req.engine];
     if (!provider) return fail('provider_unavailable', `${req.engine} isn't configured on the server.`);
 

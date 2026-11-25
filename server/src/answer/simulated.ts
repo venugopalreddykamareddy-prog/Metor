@@ -1,5 +1,6 @@
 import { findAmbiguousAcronyms } from '../../../shared/acronyms.ts';
 import { isClarifyOnly, type Assessment, type QuestionType } from '../../../shared/answerFormat.ts';
+import { clip, hasProvenance, isBehavioral } from '../../../shared/kb.ts';
 import type { AnswerLength } from '../../../shared/messages.ts';
 import type { AnswerRequest } from './prompt.ts';
 import type { AnswerProvider } from './types.ts';
@@ -45,7 +46,12 @@ export function createSimulatedAnswer(delayMs = 25): AnswerProvider {
   return async ({ request, signal }) => {
     const h = classify(request);
     const header = `TYPE: ${h.type}\nASSESSMENT: ${h.assessment}\nNOTE: ${h.note ?? '-'}\nCLARIFY: ${h.clarify ?? '-'}\nANSWER:\n`;
-    const answer = isClarifyOnly(h.assessment)
+    const story = isBehavioral(request.question) ? request.kb?.find((k) => k.provenance === 'verified' && hasProvenance(k.kind)) : undefined;
+    const answer = story
+      ? `[Simulated placeholder, not an AI answer.] From your verified ${story.kind} "${story.title}": ${clip(story.text, 240)} That's the situation, what I did, and the result.`
+      : isBehavioral(request.question)
+        ? `[Simulated placeholder, not an AI answer.] No verified experience is loaded for this, so here's a hypothetical example. ${BODY.slice(0, SENTENCES[request.length]).join(' ')}`
+        : isClarifyOnly(h.assessment)
       ? `[Simulated placeholder, not an AI answer.] ${h.clarify ?? 'Could you say a bit more about what you mean?'}`
       : [
           '[Simulated placeholder, not an AI answer.] Sure, here is how I would put it.',

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyBaseLogger } from 'fastify';
 import type { ServerMessageBody } from '../../../shared/messages.ts';
 import { UsageLedger } from '../limits/usageLedger.ts';
-import { AnswerSession } from './engine.ts';
+import { AnswerSession, cacheKey } from './engine.ts';
+import { createSimulatedAnswer } from './simulated.ts';
 import { createGroqAnswer } from './groq.ts';
 import type { AnswerRequest } from './prompt.ts';
 import type { AnswerProvider } from './types.ts';
@@ -242,3 +243,27 @@ describe('AnswerSession with no answer text', () => {
     expect(sent.some((m) => m.type === 'answer.done')).toBe(false);
   });
 });
+
+describe('AnswerSession with knowledge-base excerpts', () => {
+  const kb = [{ kind: 'story' as const, provenance: 'verified' as const, title: 'Checkout outage', text: 'A bad config push took checkout down for 20 minutes. I rolled back with Argo CD.' }];
+
+  it('keys the cache on the excerpts sent', () => {
+    const req = request('simulated', 'Tell me about a time you handled an outage');
+    expect(cacheKey(req)).not.toBe(cacheKey({ ...req, kb }));
+  });
+
+  it('builds a behavioral answer from the verified story only (simulated)', async () => {
+    const { s, text } = session({ simulated: createSimulatedAnswer(0) }, null);
+    await s.handle({ ...request('simulated', 'Tell me about a time you handled an outage'), kb });
+    expect(text()).toContain('From your verified story "Checkout outage"');
+    expect(text()).toContain('rolled back with Argo CD');
+  });
+
+  it('says no verified experience is loaded when no story matches (simulated)', async () => {
+    const { s, text } = session({ simulated: createSimulatedAnswer(0) }, null);
+    await s.handle(request('simulated', 'Tell me about a time you led a migration'));
+    expect(text()).toContain('No verified experience is loaded for this');
+    expect(text()).toContain('hypothetical example');
+  });
+});
+

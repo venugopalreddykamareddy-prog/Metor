@@ -1,3 +1,5 @@
+import { keywords } from './kb.ts';
+
 // First-person claims of past experience ("I've built…", "at my last company…"). No verified resume
 // or experience is loaded before Phase 5, so any such sentence in a suggested answer is made up.
 // The UI warns when it appears and the evaluation counts it (hard rule 3). Explicit patterns only.
@@ -26,5 +28,18 @@ export function findExperienceClaims(text: string): string[] {
   return sentences.filter((s) => {
     if (/\b(?:no verified|isn't loaded|not loaded|hypothetical|for example, if I had|one way I'd)\b/i.test(s)) return false;
     return PATTERNS.some((p) => p.test(s));
+  });
+}
+
+/**
+ * Claims not backed by the verified KB excerpts sent with the question (Phase 5): a claim counts as
+ * backed when it shares at least two keywords with one verified excerpt. A lexical check, so it
+ * catches invented stories, not a wrong number inside a real one.
+ */
+export function unsupportedClaims(claims: readonly string[], verified: readonly string[]): string[] {
+  const sets = verified.map((v) => new Set(keywords(v)));
+  return claims.filter((c) => {
+    const words = keywords(c);
+    return !sets.some((set) => words.filter((w) => set.has(w)).length >= 2);
   });
 }
